@@ -2,6 +2,9 @@ import numpy as np
 import nibabel as nib
 from tqdm import tqdm
 
+import os
+from glob import glob
+
 
 def to_channels(arr: np.ndarray, dtype=np.uint8) -> np.ndarray:
     channels = np.unique(arr)
@@ -118,3 +121,31 @@ def load_data_3D(imageNames, normImage=False, categorical=False, dtype=np.float3
         return images, affines
     else:
         return images
+
+def get_pairs(data_dir):
+    # match each MR to its label by name: Case_004_Week0_LFOV <-> Case_004_Week0_SEMANTIC_LFOV
+    labels = {os.path.basename(f).replace("_SEMANTIC", ""): f
+              for f in glob(os.path.join(data_dir, "semantic_labels_anon", "*.nii.gz"))}
+    mrs = sorted(glob(os.path.join(data_dir, "semantic_MRs_anon", "*.nii.gz")))
+    return [(mr, labels[os.path.basename(mr)]) for mr in mrs if os.path.basename(mr) in labels]
+
+
+def split_pairs(pairs, val_frac=0.15, test_frac=0.15, seed=42):
+    # split by patient (Case_XXX), so no patient's other weeks leak between splits
+    # fixed seed so the 2D baseline and the 3D model are tested on exactly the same cases
+    cases = sorted({os.path.basename(mr).split("_")[1] for mr, _ in pairs})
+    np.random.default_rng(seed).shuffle(cases)
+    n_val, n_test = round(len(cases) * val_frac), round(len(cases) * test_frac)
+    groups = {"test": set(cases[:n_test]), "val": set(cases[n_test:n_test + n_val]), "train": set(cases[n_test + n_val:])}
+    return {name: [p for p in pairs if os.path.basename(p[0]).split("_")[1] in group] for name, group in groups.items()}
+
+
+def get_data(data_dir, norm=True, early_stop=False, threeD=True):
+    mr_files, seg_files = zip(*get_pairs(data_dir))
+    images = load_data_3D(list(mr_files), normImage=norm, early_stop=early_stop)
+    labels = load_data_3D(list(seg_files), dtype=np.uint8, early_stop=early_stop)
+    if not threeD:
+        # (N, H, W, D) -> (N*D, H, W): every slice k of volume i stays paired with label slice k of volume i
+        images = images.transpose(0, 3, 1, 2).reshape(-1, *images.shape[1:3])
+        labels = labels.transpose(0, 3, 1, 2).reshape(-1, *labels.shape[1:3])
+    return images, labels
