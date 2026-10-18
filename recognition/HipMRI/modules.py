@@ -12,10 +12,19 @@ class ResidualBlock(nn.Module):
     def __init__(self, channels, dropout=0.3):
         # instanceNorm -> leakyrelu -> 3x3x3 conv -> dropout -> instancenorm -> leakyrelu -> 3x3x3 conv (channel count stays same)
         super().__init__()
+        self.block == nn.Sequential(
+            nn.InstanceNorm3d(channels, affine=True),
+            nn.LeakyReLU(1e-2, inplace=True),
+            nn.Conv3d(channels, channels, kernel_size=3, padding=1),
+            nn.Dropout3d(dropout),
+            nn.InstanceNorm3d(channels, affine=True),
+            nn.LeakyReLU(1e-2, inplace=True),
+            nn.Conv3d(channels, channels, kernel_size=3, padding=1),
+        )
 
     def forward(self, x):
         # run x through layers and return result
-        pass
+        return self.block(x)
 
 class UpsampleBlock(nn.Module):
     # Decoder step (doubles spatial size)
@@ -23,10 +32,16 @@ class UpsampleBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         # upsample scale 2-> 3x3x3 conv (in -> out channels) -> instance norm -> leaky relu
         super().__init__()
+        self.block = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.InstanceNorm3d(out_channels, affine=True),
+            nn.LeakyReLU(1e-2, inplace=True),
+        )
 
     def forward(self, x):
         # upsample x by 2 and convolve to out_channels
-        pass
+        return self.block(x)
 
 class LocalisationBlock(nn.Module):
     # decoder run after concatting with skip connection
