@@ -34,14 +34,16 @@ k = (lab == 5).sum(axis=(0, 1)).argmax() # most prostate
 print("plotting slice", k)
 
 
-
+plt.figure(figsize=(16,8))
 cmap = plt.get_cmap("tab10", len(names))
 plt.subplot(2, 4, 1); plt.imshow(image[0, :, :, k], cmap="gray"); plt.title(f"MR slice {k}")
 plt.subplot(2, 4, 2); plt.imshow(lab[:, :, k], cmap=cmap, vmin=0, vmax=len(names) - 1, interpolation="nearest"); plt.title("Labels")
-plt.legend(handles=[Patch(color=cmap(i), label=n) for i, n in enumerate(names)], loc="upper left", bbox_to_anchor=(1, 1))
+plt.figlegend(handles=[Patch(color=cmap(i), label=n) for i, n in enumerate(names)], loc="lower center", ncol=len(names))
 # one panel per class: that class's mask over the MR, so you can see which organ it is
 for c, n in enumerate(names):
     plt.subplot(2, 4, c + 3); plt.imshow(image[0, :, :, k], cmap="gray")
     plt.imshow(np.ma.masked_where(lab[:, :, k] != c, lab[:, :, k]), cmap=cmap, vmin=0, vmax=len(names) - 1, alpha=0.6, interpolation="nearest")
     plt.title(n)
+plt.tight_layout(rect=(0, 0.05, 1, 1))
+plt.savefig("data_audit.png", bbox_inches="tight")
 plt.show()
