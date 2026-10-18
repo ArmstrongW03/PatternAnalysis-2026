@@ -1,3 +1,6 @@
+# Containing the data loader for loading and preprocessing your data, including leakage-free 
+# train/validation/test splitting functions and data augmentations
+
 import numpy as np
 import nibabel as nib
 from tqdm import tqdm
