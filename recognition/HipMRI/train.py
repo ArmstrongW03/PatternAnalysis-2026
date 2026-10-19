@@ -36,6 +36,12 @@ lr = 5e-4
 weight_decay = 1e-5
 lr_gamma = 0.985 # lr multiplied by this every epoch
 
+def load_split(pairs):
+    images = load_data_3D([mr for mr, _ in pairs], normImage=True)
+    labels = load_data_3D([seg for _, seg in pairs], dtype=np.uint8)
+
+    return torch.utils.data.TensorDataset(torch.from_numpy(images).unsqueeze(1), torch.from_numpy(labels))
+
 class DiceLoss(nn.Module):
     # multiclass soft dice loss
 
@@ -94,13 +100,38 @@ def train_one_epoch(model, loader, loss_fn, optimizer, device, scaler):
 
 def validate(model, loader, loss_fn, device, num_classes):
     # evaluate on validation set (model.eval, torch.nograd). Avg loss, and avg dice per class
-    pass
+    model.eval()
+    total_loss = 0.0
+    total_dice = torch.zeros(num_classes, device=device)
+    with torch.no_grad():
+        for images, labels in loader: # batch size 2, so dice is per volume then averaged
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True).long()
+            with torch.autocast("cuda", dtype=torch.float16):
+                logits = model(images)
+            total_loss += loss_fn(logits, labels).item()
+            total_dice += dice_score(logits, labels, num_classes)
+    return total_loss / len(loader), (total_dice/ len(loader)).cpu()
 
-def plot_curves(train_losses, val_losses, val_dice, save_path="training_curves.png"):
+def plot_curves(train_losses, val_losses, val_dice, save_path="training_curves.json"):
     # plot loss and dice against epoch and save the figure. If on rangpur, print values out so can plot later.
-    pass
+    val_dice = torch.stack(val_dice) # (epochs, classes)
+    plot_data = {
+        "epoch": list(range(1, len(train_losses) + 1)),
+        "train_loss": [round(v, 4) for v in train_losses],
+        "val_loss": [round(v, 4) for v in val_losses],
+        "val_dice": {name: [round(v, 4) for v in val_dice[:, c].tolist()] for c, name in enumerate(class_names)},
+    }
+    with open(save_path, 'w') as file:
+        json.dump(plot_data, file)
 
-def main():
+    print(f"\nPlot data (also saved in {os.path.basename(save_path)})")
+    print("Loss plot: x=epoch, lines = train_loss and val_loss (Diceloss)")
+    print("DSC plot: x=epoch, one line per class in val_dice, dashed horizontal line at the 0.9 target")
+    for key, values in plot_data.items():
+        print(f"{key}={values}")
+
+def main(root=data_root, epochs=num_epochs, out_dir="."):
     """
         Set up and run training
 
@@ -110,7 +141,61 @@ def main():
         4. For each epoch: train_one_epoch->validate-> scheduler.step()->save model if val dice is best so far.
         5. Plot curves at end.
     """
-    pass
+    model_path = os.path.join(out_dir, model_name)
+
+    # dataloaders
+    start = time.time()
+    pairs = get_pairs(root)
+    if not pairs:
+        print("What?")
+        return
+
+    splits = split_pairs(pairs)
+    train_loader = torch.utils.data.DataLoader(load_split(splits["train"]), batch_size=batch_size, shuffle=True, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(load_split(splits["val"]), batch_size=1, shuffle=False, pin_memory=True)
+    print(f"Train volumes: {len(splits["train"])} | validation volumes: {len(splits["val"])}")
+    print(f"Dataset setup time: {time.time()-start}")
+
+    # model
+    model = Improved3DUNet(in_channels=1, num_classes=num_classes, base_filters=base_filters).to(device)
+    print(f"Parameters: {sum(p.numel() for p in model.parameters)}")
+
+
+    # loss, optimiser, scheduler
+    loss_fn = DiceLoss(num_classes)
+    optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimiser, gamma=lr_gamma)
+    scaler = torch.amp.GradScaler("cuda")
+
+    # train
+    train_losses, val_losses, val_dice = [], [], []
+    best_min_dice = -1 # below any real dsc so the first epoch always saved
+    torch.cuda.reset_peak_memory_stats(device) # so the peak only counts training
+    start = time.time()
+    for epoch in range(epochs):
+        train_loss = train_one_epoch(model, train_loader, loss_fn, optimiser, device, scaler)
+        val_loss, dice = validate(model, val_loader, loss_fn, device, num_classes)
+        scheduler.step()
+
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        val_dice.append(dice)
+
+        # keeps the epoch where the worst class is best, since every label needs > 0.9
+        if dice.min().item() > best_min_dice:
+            best_min_dice = dice.min().item()
+            torch.save(model.state_dict(), model_path)
+
+        dice_str = " ".join(f"{name}: {d:.4f}" for name, d in zip(class_names, dice))
+        print(f"Epoch [{epoch+1}/{epochs}] Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val DSC {dice_str} | Peak VRAM: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB | Elapsed: {time.time() - start:.1f}s")
+
+    elapsed = time.time() - start
+    print(f"Training took {str(elapsed)} secs or {str(elapsed / 60)} mins in total")
+    print(f"best validation min class DSC: {best_min_dice} saved to {model_path}")
+    print(f"Peak VRAM allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB | Peak VRAM reserved: {torch.cuda.max_memory_reserved(device) / 1024**3:.2f} GB")
+
+    # curves
+    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, "unet3d_plot_data.json"))
 
 if __name__ == "__main__":
     main()
