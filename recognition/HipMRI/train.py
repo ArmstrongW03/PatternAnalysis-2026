@@ -153,12 +153,12 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
     splits = split_pairs(pairs)
     train_loader = torch.utils.data.DataLoader(load_split(splits["train"]), batch_size=batch_size, shuffle=True, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(load_split(splits["val"]), batch_size=1, shuffle=False, pin_memory=True)
-    print(f"Train volumes: {len(splits["train"])} | validation volumes: {len(splits["val"])}")
+    print(f"Train volumes: {len(splits['train'])} | validation volumes: {len(splits['val'])}")
     print(f"Dataset setup time: {time.time()-start}")
 
     # model
     model = Improved3DUNet(in_channels=1, num_classes=num_classes, base_filters=base_filters).to(device)
-    print(f"Parameters: {sum(p.numel() for p in model.parameters)}")
+    print(f"Parameters: {sum(p.numel() for p in model.parameters())}")
 
 
     # loss, optimiser, scheduler

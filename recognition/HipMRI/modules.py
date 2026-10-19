@@ -12,7 +12,7 @@ class ResidualBlock(nn.Module):
     def __init__(self, channels, dropout=0.3):
         # instanceNorm -> leakyrelu -> 3x3x3 conv -> dropout -> instancenorm -> leakyrelu -> 3x3x3 conv (channel count stays same)
         super().__init__()
-        self.block == nn.Sequential(
+        self.block = nn.Sequential(
             nn.InstanceNorm3d(channels, affine=True),
             nn.LeakyReLU(1e-2, inplace=True),
             nn.Conv3d(channels, channels, kernel_size=3, padding=1),
@@ -80,13 +80,13 @@ class Improved3DUNet(nn.Module):
         # encoder
         self.conv1 = nn.Conv3d(in_channels, f1, kernel_size=3, stride=1, padding=1)
         self.res1 = ResidualBlock(f1)
-        self.conv2 = nn.Conv3d(in_channels, f2, kernel_size=3, stride=2, padding=1)
+        self.conv2 = nn.Conv3d(f1, f2, kernel_size=3, stride=2, padding=1)
         self.res2 = ResidualBlock(f2)
-        self.conv3 = nn.Conv3d(in_channels, f3, kernel_size=3, stride=2, padding=1)
+        self.conv3 = nn.Conv3d(f2, f3, kernel_size=3, stride=2, padding=1)
         self.res3 = ResidualBlock(f3)
-        self.conv4 = nn.Conv3d(in_channels, f4, kernel_size=3, stride=2, padding=1)
+        self.conv4 = nn.Conv3d(f3, f4, kernel_size=3, stride=2, padding=1)
         self.res4 = ResidualBlock(f4)
-        self.conv5 = nn.Conv3d(in_channels, f5, kernel_size=3, stride=2, padding=1)
+        self.conv5 = nn.Conv3d(f4, f5, kernel_size=3, stride=2, padding=1)
         self.res5 = ResidualBlock(f5)
 
         # decoder (concat with skip doubles channels, localisation halves them again)
