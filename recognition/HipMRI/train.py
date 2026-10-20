@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from dataset import load_data_3D, get_pairs, split_pairs
+from dataset import get_pairs, split_pairs, get_loaders, check_shapes, augment
 from modules import Improved3DUNet
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,7 +25,8 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 # hyperparams
-data_root = "/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data"
+# data_root = "/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data"
+data_root = "/home/groups/comp3710/HipMRI_Study_open/"
 model_name = "unet3d_hipmri.pt"
 num_classes = 6
 class_names = ("Background", "Body", "Bone", "Bladder", "Rectum", "Prostate")
@@ -36,11 +37,10 @@ lr = 5e-4
 weight_decay = 1e-5
 lr_gamma = 0.985 # lr multiplied by this every epoch
 
-def load_split(pairs):
-    images = load_data_3D([mr for mr, _ in pairs], normImage=True)
-    labels = load_data_3D([seg for _, seg in pairs], dtype=np.uint8)
-
-    return torch.utils.data.TensorDataset(torch.from_numpy(images).unsqueeze(1), torch.from_numpy(labels))
+# smoke test, set True to overfit a couple of volumes for a few epochs to check the pipeline
+smoke_test = True
+smoke_volumes = 2 # overfit on this many train volumes, validated on the same ones
+smoke_epochs = 25
 
 class DiceLoss(nn.Module):
     # multiclass soft dice loss
@@ -83,6 +83,7 @@ def train_one_epoch(model, loader, loss_fn, optimizer, device, scaler):
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True).long() # onehot needs int64
+        images, labels = augment(images, labels)
         optimizer.zero_grad(set_to_none=True)
 
         # mized precision, halves the memory
@@ -131,7 +132,7 @@ def plot_curves(train_losses, val_losses, val_dice, save_path="training_curves.j
     for key, values in plot_data.items():
         print(f"{key}={values}")
 
-def main(root=data_root, epochs=num_epochs, out_dir="."):
+def main(root=data_root, epochs=num_epochs, out_dir=".", smoke=smoke_test):
     """
         Set up and run training
 
@@ -141,7 +142,11 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
         4. For each epoch: train_one_epoch->validate-> scheduler.step()->save model if val dice is best so far.
         5. Plot curves at end.
     """
-    model_path = os.path.join(out_dir, model_name)
+    # separate file names so a smoke run never overwrites the real model
+    prefix = "smoke_" if smoke else ""
+    if smoke:
+        epochs = smoke_epochs
+    model_path = os.path.join(out_dir, prefix + model_name)
 
     # dataloaders
     start = time.time()
@@ -150,9 +155,14 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
         print("What?")
         return
 
+    check_shapes(pairs)
     splits = split_pairs(pairs)
-    train_loader = torch.utils.data.DataLoader(load_split(splits["train"]), batch_size=batch_size, shuffle=True, pin_memory=True)
-    val_loader = torch.utils.data.DataLoader(load_split(splits["val"]), batch_size=1, shuffle=False, pin_memory=True)
+    del splits["test"] # test set is only loaded for the final evaluation
+    if smoke:
+        # val = train so if the pipeline is correct the loss should go towards 0 and dsc towards 1
+        splits = {"train": splits["train"][:smoke_volumes], "val": splits["train"][:smoke_volumes]}
+    loaders = get_loaders(splits, batch_size)
+    train_loader, val_loader = loaders["train"], loaders["val"]
     print(f"Train volumes: {len(splits['train'])} | validation volumes: {len(splits['val'])}")
     print(f"Dataset setup time: {time.time()-start}")
 
@@ -195,7 +205,7 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
     print(f"Peak VRAM allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB | Peak VRAM reserved: {torch.cuda.max_memory_reserved(device) / 1024**3:.2f} GB")
 
     # curves
-    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, "unet3d_plot_data.json"))
+    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, prefix + "unet3d_plot_data.json"))
 
 if __name__ == "__main__":
     main()

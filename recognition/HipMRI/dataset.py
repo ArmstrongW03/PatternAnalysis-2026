@@ -4,8 +4,11 @@
 import numpy as np
 import nibabel as nib
 from tqdm import tqdm
+import torch
+import torch.nn.functional as F
 
 import os
+import math
 from glob import glob
 
 
@@ -26,7 +29,7 @@ def load_data_2D(imageNames, normImage=False, categorical=False, dtype=np.float3
 
     This function pre-allocates 4D arrays for conv2d to avoid excessive memory usage.
 
-    normImage: bool (normalise the image 0.0-1.0)
+    normImage: bool (z-score the image: zero mean, unit std)
     early_stop: Stop loading pre-maturely, leaves arrays mostly empty, for quick loading and testing scripts.
     '''
     affines = []
@@ -75,7 +78,7 @@ def load_data_3D(imageNames, normImage=False, categorical=False, dtype=np.float3
 
     This function pre-allocates 5D arrays for conv3d to avoid excessive memory usage.
 
-    normImage: bool (normalise the image 0.0-1.0)
+    normImage: bool (z-score the image: zero mean, unit std)
     orient: Apply orientation and resample image? Good for images with large slice thickness or anisotropic resolution
     dtype: Type of the data. If dtype=np.uint8, it is assumed that the data is labels
     early_stop: Stop loading pre-maturely? Leaves arrays mostly empty, for quick loading and testing scripts.
@@ -143,12 +146,62 @@ def split_pairs(pairs, val_frac=0.15, test_frac=0.15, seed=42):
     return {name: [p for p in pairs if os.path.basename(p[0]).split("_")[1] in group] for name, group in groups.items()}
 
 
-def get_data(data_dir, norm=True, early_stop=False, threeD=True):
-    mr_files, seg_files = zip(*get_pairs(data_dir))
+def load_split(pairs):
+    images = load_data_3D([mr for mr, _ in pairs], normImage=True)
+    labels = load_data_3D([seg for _, seg in pairs], dtype=np.uint8)
+    return torch.utils.data.TensorDataset(torch.from_numpy(images).unsqueeze(1), torch.from_numpy(labels))
+
+
+def get_loaders(splits, batch_size=2):
+    # one loader per split in splits (e.g. train/val/test), only train is shuffled and batched
+    return {name: torch.utils.data.DataLoader(load_split(pairs), batch_size=batch_size if name == "train" else 1,
+                                              shuffle=name == "train", pin_memory=True)
+            for name, pairs in splits.items()}
+
+
+def check_shapes(pairs):
+    # load_data_3D sizes everything from the first file, so flag any volume with a different shape
+    shapes = {nib.load(f).shape for pair in pairs for f in pair}
+    print("Volume shapes found:", shapes)
+
+
+def get_data(pairs, norm=True, early_stop=False, threeD=True):
+    # takes one split's pairs (from split_pairs) so test patients never leak into training
+    mr_files, seg_files = zip(*pairs)
     images = load_data_3D(list(mr_files), normImage=norm, early_stop=early_stop)
     labels = load_data_3D(list(seg_files), dtype=np.uint8, early_stop=early_stop)
     if not threeD:
         # (N, H, W, D) -> (N*D, H, W): every slice k of volume i stays paired with label slice k of volume i
         images = images.transpose(0, 3, 1, 2).reshape(-1, *images.shape[1:3])
         labels = labels.transpose(0, 3, 1, 2).reshape(-1, *labels.shape[1:3])
+    return images, labels
+
+
+def augment(images, labels, p=0.5):
+    # random flip, rotate+zoom and intensity jitter, each applied to a volume with probability p (training only)
+    # images: (B, 1, H, W, D) float, labels: (B, H, W, D) long, already on the gpu. H is left-right (LPS), H x W is axial
+    B, dev = images.shape[0], images.device
+    on = lambda: (torch.rand(B, device=dev) < p).float()
+    u = lambda: torch.rand(B, device=dev) * 2 - 1 # uniform in [-1, 1]
+
+    # left-right mirror
+    flip = on().bool()
+    images = torch.where(flip.view(-1, 1, 1, 1, 1), images.flip(2), images)
+    labels = torch.where(flip.view(-1, 1, 1, 1), labels.flip(1), labels)
+
+    # rotate up to 15 degrees in the axial plane and zoom +-10%, same grid for image and label
+    sel = on()
+    angle, scale = sel * u() * math.radians(15), 1 + sel * u() * 0.1
+    cos, sin = torch.cos(angle) / scale, torch.sin(angle) / scale
+    theta = torch.zeros(B, 3, 4, device=dev)
+    theta[:, 0, 0] = 1 # grid x is D, untouched. grid y, z are W, H
+    theta[:, 1, 1], theta[:, 1, 2], theta[:, 2, 1], theta[:, 2, 2] = cos, -sin, sin, cos
+    grid = F.affine_grid(theta, images.shape, align_corners=False)
+    images = F.grid_sample(images, grid, mode="bilinear", padding_mode="border", align_corners=False)
+    # nearest so labels stay whole class numbers
+    labels = F.grid_sample(labels[:, None].float(), grid, mode="nearest", padding_mode="border", align_corners=False)[:, 0].long()
+
+    # brightness and contrast on the image only (gamma doesnt suit z-scored values)
+    sel = on().view(-1, 1, 1, 1, 1)
+    images = images * (1 + sel * u().view(-1, 1, 1, 1, 1) * 0.1) + sel * u().view(-1, 1, 1, 1, 1) * 0.1
     return images, labels
