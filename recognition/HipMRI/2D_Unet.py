@@ -225,6 +225,9 @@ def train(model, trainloader, val_images, val_labels, epochs, save_path):
 
     history = {'train_loss': [], 'val_loss': [], 'val_dsc': []}
     best_min_dsc = -1.0 # below any real DSC so the first epoch is always saved
+    use_cuda = device.type == 'cuda' # peak VRAM is only tracked on the GPU
+    if use_cuda:
+        torch.cuda.reset_peak_memory_stats(device) # so the peak only counts training
     start = time.time()
 
     for epoch in range(epochs):
@@ -261,12 +264,16 @@ def train(model, trainloader, val_images, val_labels, epochs, save_path):
             torch.save(model.state_dict(), save_path)
 
         dsc_str = ' '.join(f'{name}: {d:.4f}' for name, d in zip(class_names, val_dsc))
+        vram_str = f' | Peak VRAM: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB' if use_cuda else ''
         print(f'Epoch [{epoch+1}/{epochs}] Train Loss: {history["train_loss"][-1]:.4f} | Val Loss: {val_loss:.4f} '
-              f'| Val DSC {dsc_str} | Elapsed: {time.time() - start:.1f}s')
+              f'| Val DSC {dsc_str}{vram_str} | Elapsed: {time.time() - start:.1f}s')
 
     elapsed = time.time() - start
     print("Training took " + str(elapsed) + " secs or " + str(elapsed / 60) + " mins in total")
     print("best validation min class DSC:", best_min_dsc, "saved to", save_path)
+    if use_cuda:
+        print(f'Peak VRAM allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB '
+              f'| Peak VRAM reserved: {torch.cuda.max_memory_reserved(device) / 1024**3:.2f} GB')
     return history
 
 # saves the losses and the validation DSC of each class so the graphs can be recreated
