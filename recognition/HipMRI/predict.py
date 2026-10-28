@@ -5,25 +5,19 @@
 import torch
 import matplotlib.pyplot as plt
 
-import UNet2D
 from dataset import get_pairs, split_pairs, get_loaders
 from modules import Improved3DUNet
+from UNet_2D import UNet2D
 from train import num_classes, class_names, base_filters, dice_score
 
 data_root = "/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data"
 is_3d = False # False tests the 2D UNet instead
 out_dir = "3D_Model" if is_3d else "2D_Unet_output"
-model_name = "unet3d" if is_3d else "unet2d"
+model_name = "unet3d" if is_3d else "unet_2d"
 model_path = f"{out_dir}/{model_name}_hipmri.pt"
 PROSTATE = 5
 end_slices = 5 # how many slices at each end of the prostate count as the apex / base
 num_examples = 3 # how many test volumes to save a picture of
-
-def predict_2d(model, images):
-    # runs each slice through the 2D model, then stacks them back into a volume shaped like the 3D model's output
-    slices = images[0].permute(3, 0, 1, 2) # (1, 1, H, W, D) -> (D, 1, H, W), each slice is one image in the batch
-    logits = torch.cat([model(chunk) for chunk in slices.split(16)]) # 16 slices at a time so it fits in memory
-    return logits.permute(1, 2, 3, 0).unsqueeze(0) # (D, C, H, W) -> (1, C, H, W, D)
 
 def dice_and_iou(pred, target):
     # overlap of two boolean masks, a region missing from both counts as perfect
@@ -79,10 +73,11 @@ def main(root=data_root):
     test_loader = get_loaders({"test": splits["test"]})["test"] # batch size 1, one volume at a time
     print(f"Test volumes: {len(splits['test'])}")
 
+    # both models take whole volumes and give (1, C, H, W, D), so everything below is the same for both
     if is_3d:
         model = Improved3DUNet(in_channels=1, num_classes=num_classes, base_filters=base_filters)
     else:
-        model = UNet2D.UNet(1, num_classes, UNet2D.base_filters) # the 2D model uses its own base_filters (32), not the 3D one
+        model = UNet2D(1, num_classes, base_filters)
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
@@ -91,7 +86,7 @@ def main(root=data_root):
     region_scores = {"whole": [], "apex": [], "base": []} # (dice, iou) per volume for each prostate region
     with torch.no_grad():
         for i, (images, labels) in enumerate(test_loader):
-            logits = model(images) if is_3d else predict_2d(model, images)
+            logits = model(images)
             total_dice += dice_score(logits, labels.long(), num_classes)
 
             preds = logits.argmax(dim=1)[0] # (H, W, D), batch size is 1
