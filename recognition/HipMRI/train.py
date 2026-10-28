@@ -27,7 +27,6 @@ torch.backends.cudnn.allow_tf32 = True
 # hyperparams
 # data_root = "/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data"
 data_root = "/home/groups/comp3710/HipMRI_Study_open/"
-model_name = "unet3d_hipmri.pt"
 num_classes = 6
 class_names = ("Background", "Body", "Bone", "Bladder", "Rectum", "Prostate")
 base_filters = 16
@@ -127,17 +126,17 @@ def plot_curves(train_losses, val_losses, val_dice, save_path="training_curves.j
     for key, values in plot_data.items():
         print(f"{key}={values}")
 
-def main(root=data_root, epochs=num_epochs, out_dir="."):
+def main(model=None, name="unet3d", root=data_root, epochs=num_epochs, out_dir="."):
     """
         Set up and run training
 
         1. BUild the train an validation dataloaders
-        2. Build improved unet 3d and move to gpu
+        2. Build improved unet 3d (or use the model passed in, UNet_2D.py passes its 2D model) and move to gpu
         3. loss = diceloss; optimizer = adam(lr=5e-4, weight_decay=1e-5); scheduler=exponentialLr(gamma=0.985).
         4. For each epoch: train_one_epoch->validate-> scheduler.step()->save model if val dice is best so far.
         5. Plot curves at end.
     """
-    model_path = os.path.join(out_dir, model_name)
+    model_path = os.path.join(out_dir, f"{name}_hipmri.pt")
 
     # dataloaders
     start = time.time()
@@ -155,7 +154,9 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
     print(f"Dataset setup time: {time.time()-start}")
 
     # model
-    model = Improved3DUNet(in_channels=1, num_classes=num_classes, base_filters=base_filters).to(device)
+    if model is None:
+        model = Improved3DUNet(in_channels=1, num_classes=num_classes, base_filters=base_filters)
+    model = model.to(device)
     print(f"Parameters: {sum(p.numel() for p in model.parameters())}")
 
 
@@ -193,7 +194,7 @@ def main(root=data_root, epochs=num_epochs, out_dir="."):
     print(f"Peak VRAM allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB | Peak VRAM reserved: {torch.cuda.max_memory_reserved(device) / 1024**3:.2f} GB")
 
     # curves
-    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, "unet3d_plot_data.json"))
+    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, f"{name}_plot_data.json"))
 
 if __name__ == "__main__":
     main()

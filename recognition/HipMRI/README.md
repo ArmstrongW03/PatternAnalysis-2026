@@ -75,12 +75,17 @@ Set the dataset root path in train.py to the path containing the semantic_MRs an
 ---
 ## Inputs, Outputs, and Plots
 ### 3D Improved U-Net
-The type of inputs that are shown in the model can be seen bellow in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked ontop of eachother and passed into the model.
+The type of inputs that are shown in the model can be seen bellow in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked ontop of eachother and passed into the model. Further the ground truth is also taken as an input into the model, although it is used purely for generating a loss function and evaluating how well the model predicted it.
 
-![Model Input, Output and Truth](3D_Model/predictions/unet3d_prediction_1.png)
-Figure 2: Model input, label ground truth, prediction segmentation
+![Model Input, Output and Truth img 0](3D_Model/predictions/unet3d_prediction_0.png)
+Image 1
+![Model Input, Output and Truth img 1](3D_Model/predictions/unet3d_prediction_1.png)
+Image 2
+![Model Input, Output and Truth img 2](3D_Model/predictions/unet3d_prediction_2.png)
+Image 3
+Figure 2: Model input, label ground truth, prediction segmentation (Dark purple: background, Blue purple: body, Teal: bone, Green: bladder, light green: rectum, yellow: prostate)
 
-The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+The model ran for 57 minutes and had a peak VRAM of 21.47GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
 
 ![Dice per class per epoch](3D_Model/unet3d_dice.png)
 Figure 3: Dice per class per Epoch
@@ -88,8 +93,50 @@ Figure 3: Dice per class per Epoch
 ![Loss per epoch of training and validation](3D_Model/unet3d_loss.png)
 Figure 4: Training and Validation Loss of each epoch 
 
+Figure 3 shows that the per class DSC was much climbed very fast for the first 20 epochs and then slowly improved as it trained further epochs. Figure 4 shows the train and validation loss tightly linked together the whole way down with the validation loss just a bit behind the train loss. This closeness of the losses shows that the model did not fall into a trap of memorising data.
+
+Globally the 3D model achieves a prostate Dice Similarity Coefficient (DSC) of 0.86 and an Intersection over Union (IoU) of 0.7562 which exceeds the 0.7 target. However, this score masks a weakness over the five most superior (base) slices obtaining a DSC of 0.7629 and an IoU of 0.6275.
+
+```
+Test DSC Background: 0.9978
+Test DSC Body: 0.9880
+Test DSC Bone: 0.9267
+Test DSC Bladder: 0.9591
+Test DSC Rectum: 0.8821
+Test DSC Prostate: 0.8601
+Min class DSC: 0.8601 | Mean DSC: 0.9356
+
+Prostate by region (5 slices at each end):
+whole: DSC 0.8601 | IoU 0.7562
+ apex: DSC 0.8419 | IoU 0.7455
+ base: DSC 0.7629 | IoU 0.6275
+```
+
 
 ### 2D U-Net
+
+![Model Input, Output and Truth img 0](2D_Unet_output/predictions/unet2d_prediction_0.png)
+Image 1
+![Model Input, Output and Truth img 1](2D_Unet_output/predictions/unet2d_prediction_1.png)
+Image 2
+![Model Input, Output and Truth img 2](2D_Unet_output/predictions/unet2d_prediction_2.png)
+Image 3
+Figure 5: Model input, label ground truth, prediction segmentation (Dark purple: background, Blue purple: body, Teal: bone, Green: bladder, light green: rectum, yellow: prostate)
+
+The model ran for 14 minutes and had a peak VRAM of 4.7GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+
+
+![Dice per class per epoch](2D_Unet_output/unet2d_dice.png)
+Figure 6: Dice per class per Epoch
+
+![Loss per epoch of training and validation](2D_Unet_output/unet2d_loss.png)
+Figure 7: Training and Validation Loss of each epoch 
+
+
+Figure 6 shows that the per class DSC climbed very fast initially (first 5 epochs) but then mostly leveled off for the rest of the training. Figure 7 shows something interesting, the 2D model memorises the data input in the training batch which can be seen as the 
+
+Figure 3 shows that the per class DSC was much climbed very fast for the first 20 epochs and then slowly improved as it trained further epochs. Figure 4 shows the train and validation loss tightly linked together the whole way down with the validation loss just a bit behind the train loss. This closeness of the losses shows that the model did not fall into a trap of memorising data.
+
 
 ---
 • Description of any specific pre-processing used, with references if any. Justify your training, validation, and testing splits of the data.
