@@ -26,7 +26,7 @@ torch.backends.cudnn.allow_tf32 = True
 # hyperparameters
 demo = False # if true, loads the saved model instead of training
 local = False # true when running on my computer (CPU), false on rangpur
-data_root = '/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data' # holds semantic_MRs_anon and semantic_labels_anon, change this when running on rangpur
+data_root = "/content/use_data/" # holds semantic_MRs_anon and semantic_labels_anon, change this when running on rangpur
 model_name = 'unet2d_hipmri.pt'
 num_classes = 6
 class_names = ('Background', 'Body', 'Bone', 'Bladder', 'Rectum', 'Prostate')

@@ -55,16 +55,22 @@ The key technical risks of this task are the memorisation of data (overfitting),
 
 The computing budget consists of usage of 100 tokens ($15) for an A100 GPU on Google Colab at an approximate usage of 6 tokens per hour allows for a maximum of 16 hours of use. This accounts for the training for the baseline, smoke test and full runs. This should be plenty of compute power and time to account for estimated resource consumption.
 
-The Next planned experiment is a full training run against the data with a larger number of Epochs, then testing the accuracy of the boundaries and slice transitions in comparison to the 2D U-Net.
-
-If the 3D Improved U-Net fails to train, a workable fallback would either be the 3D U-Net or the baseline 2D U-Net.
-
-
-
+The Next planned experiment is a full training run against the data with a larger number of Epochs, then testing the accuracy of the boundaries and slice transitions in comparison to the 2D U-Net. If the 3D Improved U-Net fails to train, a workable fallback would either be the 3D U-Net or the baseline 2D U-Net.
 
 ---
-• Any dependencies required, including exact versions, and address reproducibility of results.
+## Run Instructions
+Ensure that the following depencencies are installed in the environment that this project is being run.
 
+Set the dataset root path in train.py to the path containing the semantic_MRs and semantic_labels_only folders. Further it is optional to adjust the hyperparameters in train.py or the random seed in dataset.py to adjust the train / validate / test split. Further although the hyperparameters are the same and the data split is the same it does not necessarily mean that the results will be repeated exactly due to random features such as the dropout or many other factors.
+
+### Dependencies
+- Python 3.12.3
+- torch 2.14.1
+- torchvision 0.29.1
+- numpy 2.5.4
+- nibabel 5.4.2
+- matplotlib 3.11.2
+- tqdm 4.70.1
 
 
 
