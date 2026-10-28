@@ -1,0 +1,13 @@
+WARNING: CUDA unavailable
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 27/27 [00:05<00:00,  4.79it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 27/27 [00:02<00:00, 12.42it/s]
+Test volumes: 27
+/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/PatternAnalysis-2026/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Test DSC Background: 0.9978
+Test DSC Body: 0.9880
+Test DSC Bone: 0.9267
+Test DSC Bladder: 0.9591
+Test DSC Rectum: 0.8821
+Test DSC Prostate: 0.8601
+Min class DSC: 0.8601 | Mean DSC: 0.9356
