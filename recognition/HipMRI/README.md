@@ -1,13 +1,28 @@
 # Prostate MRI Segmentation using 3D Improved U-Net
 - Author: William Armstrong (48842613)
-- Course: COMP3710 - Pattern Analysis
 
 ---
-title, a description of the algorithm and the problem that it solves (approximately a paragraph), how it works in a paragraph, and a figure/visualisation.
+### Background & Problem
+In Prostate Radiotherapy Planning (HipMRI), targeting a beam requires millimeter precision between the prostate and the surrounding critical organs (bladder, rectum, femoral heads), under and over contouring is not viable either as under contouring risks recurrence of tumours and over contouring irradiates the surrounding organs causing massiveissues. There are two main issues when trying to make models for this data. Firstly, as it is 3D data, if a 2D model attempts to learn it through slices it may result in jagged 3D boundaries and secondly, the prostate is rather small, with it making up less than 2% of the overall 3D volume, this requires thought on how best to score losses.
 
+### Adressing the Problem
 
-Background of the problem. Description of the model and the problem it solves. How it works in a paragraph and a figure/ visualisation.
+To address these issues, this project implements a 3D improved U-Net (Isensee et al, 2018). It allows the model to process whole volumes with 3D convolutions meaning that every prediction is informed by the slices above and below it. It is trained with a multi-class Dice loss that weights every class equally regardless of the size. The model will be analysed against a 2D U-Net baseline on the exact same patient level split in order to discover the effect 3D context has and whether it is capable of removing boundary and slice-transition errors or whether it just improves the easy central slices.
 
+![Model Diagram](model_diagram.drawio.png)
+Figure 1: Model Architecture Flow
+
+### How it works
+
+The network in Figure 1 is an 3D Improved U-Net, this means that it is an starts with an encoder, then a decoder and has skip connections.
+
+The Encoder (downsampling, blue) has five levels with 16, 32, 64, 128 and 256 channels. Each level starts with a 3x3x3 convolution with stride 2 (except level 1 which uses stride 1) in order to halve the spatial dimension. This brings a 256x256x128 down to the bottleneck of 16x16x8.
+
+The output from each encoder is then passed into a residual block that is made up of two 3x3x3 convolutions, each preceeded by instance normalisation, leaky ReLU (slope = 0.01) and dropout (p=0.3). The output from the residual block is then added to the original output from the encoder to make that levels skip connection (dotted arrows).
+
+The model then upscales by a factor of two using the nearest neighbour, then uses a 3x3x3 convolution to halve the channels, the result is concatenated with the matching skip connection which is used to recover the spatial detail lost during the downsampling. Then a localisation module merges the two and ensures that the channels halve.
+
+Lastly, the deep supervision is made up of three 1x1x1 convolutions that produce six class segmentation maps at levels 3, 2 and 1. Each coarser map is trilinearly upsampled and added element-wise to the next. This means the final output combines predictions from three different levels and allows for the gradients to directly affect deeper layers.
 
 
 ---
@@ -18,7 +33,7 @@ The intended users of this segmentation model are imaging specialists. Their mai
 
 To evaluate how well the model has addressed the problem some testable acceptance criteria have been made. For the 3D improved UNet to be worth it, it will further need to fix the issues around boundary and slice-transition errors and do it better than the 2D-UNet.
 
-Testable acceptance criteria
+Testable acceptance criteria:
 1. Sorensen-Dice similarity greater than 0.7 on test set
 2. Base and Apex specific Dice similarity greater than 0.7 on the test set
 3. Intersection-over-Union (IoU) greater than 0.7 on test set
@@ -32,7 +47,7 @@ The chosen dataset is HipMRI, focusing on Prostate Radiotherapy Planning. The ch
 
 ### Preliminary Feasibility Evidence
 
-An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
+An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128. The data was split into 'semantic_MRs' containing the raw MRI volumes and 'semantic_labels_only' containing the source of truth for the segmentation by label. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
 
 
 ### Risks, Budget & Fallback
