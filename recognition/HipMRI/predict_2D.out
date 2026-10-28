@@ -1,0 +1,21 @@
+WARNING: CUDA unavailable
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 27/27 [00:05<00:00,  4.69it/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 27/27 [00:02<00:00, 12.23it/s]
+Test volumes: 27
+/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/PatternAnalysis-2026/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+saved 2D_Unet_output/predictions/unet2d_prediction_0.png
+saved 2D_Unet_output/predictions/unet2d_prediction_1.png
+saved 2D_Unet_output/predictions/unet2d_prediction_2.png
+Test DSC Background: 0.9964
+Test DSC Body: 0.9852
+Test DSC Bone: 0.9190
+Test DSC Bladder: 0.9519
+Test DSC Rectum: 0.8505
+Test DSC Prostate: 0.8512
+Min class DSC: 0.8505 | Mean DSC: 0.9257
+
+Prostate by region (5 slices at each end):
+whole: DSC 0.8512 | IoU 0.7429
+ apex: DSC 0.8053 | IoU 0.6895
+ base: DSC 0.7658 | IoU 0.6318

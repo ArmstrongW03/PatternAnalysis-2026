@@ -1,5 +1,5 @@
-# Containing the source code for training, validating, testing, and saving your model. 
-# The model should be imported from modules.py and the data loader should be imported from dataset.py. 
+# Containing the source code for training, validating, testing, and saving your model.
+# The model should be imported from modules.py and the data loader should be imported from dataset.py.
 # Make sure to plot the losses and metrics during training.
 
 import os
@@ -36,11 +36,6 @@ num_epochs = 30
 lr = 5e-4
 weight_decay = 1e-5
 lr_gamma = 0.985 # lr multiplied by this every epoch
-
-# smoke test, set True to overfit a couple of volumes for a few epochs to check the pipeline
-smoke_test = True
-smoke_volumes = 2 # overfit on this many train volumes, validated on the same ones
-smoke_epochs = 25
 
 class DiceLoss(nn.Module):
     # multiclass soft dice loss
@@ -132,7 +127,7 @@ def plot_curves(train_losses, val_losses, val_dice, save_path="training_curves.j
     for key, values in plot_data.items():
         print(f"{key}={values}")
 
-def main(root=data_root, epochs=num_epochs, out_dir=".", smoke=smoke_test):
+def main(root=data_root, epochs=num_epochs, out_dir="."):
     """
         Set up and run training
 
@@ -142,11 +137,7 @@ def main(root=data_root, epochs=num_epochs, out_dir=".", smoke=smoke_test):
         4. For each epoch: train_one_epoch->validate-> scheduler.step()->save model if val dice is best so far.
         5. Plot curves at end.
     """
-    # separate file names so a smoke run never overwrites the real model
-    prefix = "smoke_" if smoke else ""
-    if smoke:
-        epochs = smoke_epochs
-    model_path = os.path.join(out_dir, prefix + model_name)
+    model_path = os.path.join(out_dir, model_name)
 
     # dataloaders
     start = time.time()
@@ -158,9 +149,6 @@ def main(root=data_root, epochs=num_epochs, out_dir=".", smoke=smoke_test):
     check_shapes(pairs)
     splits = split_pairs(pairs)
     del splits["test"] # test set is only loaded for the final evaluation
-    if smoke:
-        # val = train so if the pipeline is correct the loss should go towards 0 and dsc towards 1
-        splits = {"train": splits["train"][:smoke_volumes], "val": splits["train"][:smoke_volumes]}
     loaders = get_loaders(splits, batch_size)
     train_loader, val_loader = loaders["train"], loaders["val"]
     print(f"Train volumes: {len(splits['train'])} | validation volumes: {len(splits['val'])}")
@@ -205,7 +193,7 @@ def main(root=data_root, epochs=num_epochs, out_dir=".", smoke=smoke_test):
     print(f"Peak VRAM allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB | Peak VRAM reserved: {torch.cuda.max_memory_reserved(device) / 1024**3:.2f} GB")
 
     # curves
-    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, prefix + "unet3d_plot_data.json"))
+    plot_curves(train_losses, val_losses, val_dice, os.path.join(out_dir, "unet3d_plot_data.json"))
 
 if __name__ == "__main__":
     main()
