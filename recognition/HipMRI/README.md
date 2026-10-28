@@ -72,18 +72,24 @@ Set the dataset root path in train.py to the path containing the semantic_MRs an
 - matplotlib 3.11.2
 - tqdm 4.70.1
 
-
-
-
-
-
 ---
-• Example inputs, outputs, and visual plots of your algorithm.
+## Inputs, Outputs, and Plots
+### 3D Improved U-Net
+The type of inputs that are shown in the model can be seen bellow in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked ontop of eachother and passed into the model.
+
+![Model Input, Output and Truth](3D_Model/predictions/unet3d_prediction_1.png)
+Figure 2: Model input, label ground truth, prediction segmentation
+
+The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+
+![Dice per class per epoch](3D_Model/unet3d_dice.png)
+Figure 3: Dice per class per Epoch
+
+![Loss per epoch of training and validation](3D_Model/unet3d_loss.png)
+Figure 4: Training and Validation Loss of each epoch 
 
 
-
-
-
+### 2D U-Net
 
 ---
 • Description of any specific pre-processing used, with references if any. Justify your training, validation, and testing splits of the data.
