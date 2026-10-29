@@ -115,32 +115,43 @@ whole: DSC 0.8601 | IoU 0.7562
 
 ### 2D U-Net
 
-![Model Input, Output and Truth img 0](2D_Unet_output/predictions/unet2d_prediction_0.png)
+![Model Input, Output and Truth img 0](2D_Unet_output/predictions/unet_2d_prediction_0.png)
 Image 1
-![Model Input, Output and Truth img 1](2D_Unet_output/predictions/unet2d_prediction_1.png)
+![Model Input, Output and Truth img 1](2D_Unet_output/predictions/unet_2d_prediction_1.png)
 Image 2
-![Model Input, Output and Truth img 2](2D_Unet_output/predictions/unet2d_prediction_2.png)
+![Model Input, Output and Truth img 2](2D_Unet_output/predictions/unet_2d_prediction_2.png)
 Image 3
 Figure 5: Model input, label ground truth, prediction segmentation (Dark purple: background, Blue purple: body, Teal: bone, Green: bladder, light green: rectum, yellow: prostate)
 
-The model ran for 14 minutes and had a peak VRAM of 4.7GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+The model ran for 55 minutes and had a peak VRAM of 20.54GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
 
 
-![Dice per class per epoch](2D_Unet_output/unet2d_dice.png)
+![Dice per class per epoch](2D_Unet_output/unet_2d_dice.png)
 Figure 6: Dice per class per Epoch
 
-![Loss per epoch of training and validation](2D_Unet_output/unet2d_loss.png)
+![Loss per epoch of training and validation](2D_Unet_output/unet_2d_loss.png)
 Figure 7: Training and Validation Loss of each epoch 
 
 
-Figure 6 shows that the per class DSC climbed very fast initially (first 5 epochs) but then mostly leveled off for the rest of the training. Figure 7 shows something interesting, the 2D model memorises the data input in the training batch which can be seen as the 
-
-Figure 3 shows that the per class DSC was much climbed very fast for the first 20 epochs and then slowly improved as it trained further epochs. Figure 4 shows the train and validation loss tightly linked together the whole way down with the validation loss just a bit behind the train loss. This closeness of the losses shows that the model did not fall into a trap of memorising data.
+Figure 6 shows that the per class DSC climbed very fast initially (first 20 epochs) but then mostly leveled off for the rest of the training. Figure 7 shows that similar to figure 4 there was no memorisation of data and the validation loss stayed tightly linked to the training loss, trailing just a bit behind.
 
 
 ---
 • Description of any specific pre-processing used, with references if any. Justify your training, validation, and testing splits of the data.
 
+### Pre-Processing Techniques
+Pre-processing was used in order to avoid data memorisation, data leaking and ensure that the model was good generally, not just on the training set.
+
+Firstly, each MRI is paired up with its corresponding label using the `get_pairs` function, this is important as a mismatched pair would evaluate the model on the wrong thing. 
+
+
+
+
+
+### Data Split of Train, Validation, Test
+To ensure that there was no data leaking there was a patient level split, not just a split based on week, volume, or slice. `split_pairs` groups by `Case_AAA` so that all a patients weekly scans are in one place. This is crucial as with 211 volumes and 38 patients each with about 5 scans a random split based on volume would have the model training on nearly identical data to what it is being validated and tested against. This would artificially increase the validation and test scores and overfit to the data given without much generalisability.
+
+Using this split based on patient, there was about 70% in the training set, 15% in the validation and 15% in the test. This corresponded to 26 training patients, 6 test patients, and 6 validation patients. The idea was to try and use as many patients as possible to train the model. Use the validation patients as a way to save the best model generated (best minimum class Dice Similarity Coefficient). Test is completely separated and only used in predict.py. Further a fixed seed is used for both the 2D baseline and 3D model so that they are tested on the same splits and so that the randomisation removes all bias that can be generated from hand picking patients and volumes for each set.
 
 
 
