@@ -179,17 +179,20 @@ def get_data(pairs, norm=True, early_stop=False, threeD=True):
 
 def augment(images, labels, p=0.5):
     # random flip, rotate+zoom and intensity jitter, each applied to a volume with probability p (training only)
+    # only 26 training patients, so this helps stop the model memorising the training set
     # images: (B, 1, H, W, D) float, labels: (B, H, W, D) long, already on the gpu. H is left-right (LPS), H x W is axial
     B, dev = images.shape[0], images.device
     on = lambda: (torch.rand(B, device=dev) < p).float()
     u = lambda: torch.rand(B, device=dev) * 2 - 1 # uniform in [-1, 1]
 
-    # left-right mirror
+    # left-right mirror, the body is roughly symmetric this way
+    # (no front-back flip, that would put the bladder below the prostate)
     flip = on().bool()
     images = torch.where(flip.view(-1, 1, 1, 1, 1), images.flip(2), images)
     labels = torch.where(flip.view(-1, 1, 1, 1), labels.flip(1), labels)
 
     # rotate up to 15 degrees in the axial plane and zoom +-10%, same grid for image and label
+    # simulates small differences in patient positioning and organ size
     sel = on()
     angle, scale = sel * u() * math.radians(15), 1 + sel * u() * 0.1
     cos, sin = torch.cos(angle) / scale, torch.sin(angle) / scale
@@ -197,11 +200,13 @@ def augment(images, labels, p=0.5):
     theta[:, 0, 0] = 1 # grid x is D, untouched. grid y, z are W, H
     theta[:, 1, 1], theta[:, 1, 2], theta[:, 2, 1], theta[:, 2, 2] = cos, -sin, sin, cos
     grid = F.affine_grid(theta, images.shape, align_corners=False)
+    # border padding copies edge values, 0 isn't background after z-score normalisation
     images = F.grid_sample(images, grid, mode="bilinear", padding_mode="border", align_corners=False)
     # nearest so labels stay whole class numbers
     labels = F.grid_sample(labels[:, None].float(), grid, mode="nearest", padding_mode="border", align_corners=False)[:, 0].long()
 
-    # brightness and contrast on the image only (gamma is ommited for simplicity)
+    # brightness and contrast on the image only (alternative to gamma for simplicity)
+    # x' = a*x + b, so the model relies on shape and relative contrast, not exact values
     sel = on().view(-1, 1, 1, 1, 1)
     images = images * (1 + sel * u().view(-1, 1, 1, 1, 1) * 0.1) + sel * u().view(-1, 1, 1, 1, 1) * 0.1
     return images, labels
