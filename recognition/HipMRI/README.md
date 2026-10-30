@@ -229,7 +229,15 @@ All of these images show that the middle input slice seems to be well predicted 
 Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all aspects of quality and only has slightly worse resource consumption. The slight extra resource consumption is worth the extra performance quality of the model. Noting that it is slightly worse in IoU and DSC in the base slices, it well makes up for it in the apex slices. The recommendation that would be given is to make use of the new model to speed up segmentaiton of MRI's but to pay more attention to the areas where it is known to be lacking, such as the base slices.
 
 ---
-• The mandatory Artificial Intelligence Usage Disclosure subsection (see Section 6).
+## Artificial Intelligence Usage Disclosure
+- Tools used : Claude (Opus 5.5)
 
+- Specific Tasks:
+    - Implementing functions that were scaffolded for it with
+    - Researching and explaining different techniques to me
+    - Used it to check over what I had written in the README and tell me where it was weak / could be improved (flimsy explanations, lack of context, lack of analysis)
 
-
+- How I audited the AI:
+    - I would not allow the AI to automatically input any code, instead writing it in myself understadning each line before moving onto the next. Whenever I didnt understand what it had done, I would get it to confirm the meaning behind the line.
+    - I made sure to test that the functions worked together in a smoke test before doing a full long run.
+    - When it suggested a reference, I would go to said reference and find the place where it said the thing being referenced.
