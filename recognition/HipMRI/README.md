@@ -137,13 +137,26 @@ Figure 6 shows that the per class DSC climbed very fast initially (first 20 epoc
 
 
 ---
-• Description of any specific pre-processing used, with references if any. Justify your training, validation, and testing splits of the data.
-
 ### Pre-Processing Techniques
 Pre-processing was used in order to avoid data memorisation, data leaking and ensure that the model was good generally, not just on the training set.
 
-Firstly, each MRI is paired up with its corresponding label using the `get_pairs` function, this is important as a mismatched pair would evaluate the model on the wrong thing. 
+Firstly, each MRI is paired up with its corresponding label using the `get_pairs` function, this is important as a mismatched pair would evaluate the model on the wrong thing. Another check was done to the data showing that there was two different types of shapes 256x256x128 and 256x256x144, only one of the volumes had a depth of 144 and load_data_3d just uses the first shape it sees and either clips anything above that depth and zero pads anything below. As only one volume had a depth of 144 and the rest were 128 and 128 was the one that load_data_3d uses it was deemed that it was worth to keep the depth of 144 data as using it and having more data is better than not using it and having less, further the model should still be able to work on it as it is valid data.
 
+The data was augmented when it was loaded. Firstly there was a z-score normalisation (normImage=True) done on each volume ((x - mean) / std) so that every volume has a mean of 0 and a standard deviation of 1. This is useful as the intensities of an MRI have no standardised intensity values, so the same tissue can have a different value on a different scan so the normalisation fixes this by making those flucuations on a scale that is similar across the MRI's (Isensee et al. 2018). 
+
+The labels are one hot encoded inside the loss, they are kept as uint8 classes (0-5) and the f.one_hot inside diceloss turns them into 6 channels. This is useful as storing 6 channels per voxel for every one of the volumes would use six times the memory, it is also important so that a weight is not arbitrarily affected by class having a higher integer value.
+
+Now, in the training set only, the data was augmented further. This was done as there are only 26 training patients and if the data was not augmented it was likely that the model would overfit and memorise the data, performing poorly on any data it had not seen while performing great in training. Note that the test and validation data is never augmented so that when the model runs on them it reflects real scans output.
+
+Each augmentation had a 50% chance of happening, so that the amount of limited data could be extended and be more 'unique' data. The following augmentation techniques were performed on the images and labels of the training (needs to apply to both or else if the image is rotated then the label should be aswell or it wont have the correct loss). Isenee et al, used random rotations, random scaling, random elastic deformations, gamma correction augmentation and mirroring.
+
+There were left and right mirroring (flips across the height plane), when looking at the images in figure 5, it can be seen that the image is roughly symmetric left of the body to right of body (up and down looking at the scans), it would not be right to flip it front to back in the body (left righ in image) as that would place the bladder below the prostate which isn't possible and would poison the data.
+
+There were axial rotations of up to 15 degrees positively and negatively and also zooming in or out of up to 10%. This is useful as it simulates the small differences in a patient's positioning and body or organ size. A nearest neighbour resample is then used so every voxel stays belonging to only one class.
+
+The border is padded in a way that the rotated corners copy the edge values instead of filling with 0 as when the data has been normalised a value of 0 is likely to be something like tissue and may not be background.
+
+If the augmentation were to use gamma which is non-linear (x'=x^y) as there are normalised values, there a negative values and the data would need to be rescaled to [0,1] first. As such for ease, a random linear transformation is applied (x'=ax+b) to the image. This is applied only to the image to affect the brightness and contrast of the image so that teh model relies on the shape and relative contrast and brightness rather than the exact value to reduce overfitting.
 
 
 

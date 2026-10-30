@@ -201,7 +201,7 @@ def augment(images, labels, p=0.5):
     # nearest so labels stay whole class numbers
     labels = F.grid_sample(labels[:, None].float(), grid, mode="nearest", padding_mode="border", align_corners=False)[:, 0].long()
 
-    # brightness and contrast on the image only (gamma doesnt suit z-scored values)
+    # brightness and contrast on the image only (gamma is ommited for simplicity)
     sel = on().view(-1, 1, 1, 1, 1)
     images = images * (1 + sel * u().view(-1, 1, 1, 1, 1) * 0.1) + sel * u().view(-1, 1, 1, 1, 1) * 0.1
     return images, labels
