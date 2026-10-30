@@ -2,6 +2,7 @@
 # on test cases, print out any results, and provide visualisations where applicable (e.g., prediction overlays, generated
 # samples, heatmaps). NumPy is allowed in this script for visualisation or loading data.
 
+import os
 import time
 import torch
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ from UNet_2D import UNet2D
 from train import num_classes, class_names, base_filters, dice_score
 
 data_root = "/home/twig/Desktop/Uni/Year 3 - Sem 2/COMP3710/Proj/data"
-is_3d = False # False tests the 2D UNet instead
+is_3d = True # False tests the 2D UNet instead
 out_dir = "3D_Model" if is_3d else "2D_Unet_output"
 model_name = "unet3d" if is_3d else "unet_2d"
 model_path = f"{out_dir}/{model_name}_hipmri.pt"
@@ -43,30 +44,38 @@ def prostate_regions(preds, labels):
         "base": dice_and_iou(pred[..., base], target[..., base]),
     }
 
-def save_example(image, label, pred, save_path):
-    # one volume, rows are the apex / middle / base prostate slices, columns are input MRI | ground truth | prediction
+def save_example(image, label, pred, save_prefix):
+    # one image per prostate region (apex / middle / base), rows are consecutive slices, columns are input MRI | ground truth | prediction
+    # apex and base also show one slice past the end of the prostate, to check the model stops predicting prostate there
     prostate_slices = (label == PROSTATE).any(dim=0).any(dim=0).nonzero().flatten()
-    rows = {
-        "Apex": prostate_slices[0].item(), # first slice with prostate
-        "Middle": prostate_slices[len(prostate_slices) // 2].item(),
-        "Base": prostate_slices[-1].item(), # last slice with prostate
+    first, last = prostate_slices[0].item(), prostate_slices[-1].item()
+    mid = prostate_slices[len(prostate_slices) // 2].item()
+    regions = {
+        "Apex": range(first - 1, first + 3), # 1 slice before the prostate starts + first 3 prostate slices
+        "Middle": range(mid - 1, mid + 2),
+        "Base": range(last - 2, last + 2), # last 3 prostate slices + 1 slice after it ends
     }
 
-    fig, axes = plt.subplots(3, 3, figsize=(9, 9))
-    for row, (region, k) in enumerate(rows.items()):
-        axes[row, 0].imshow(image[..., k], cmap="gray")
-        axes[row, 1].imshow(label[..., k], cmap="viridis", vmin=0, vmax=num_classes - 1) # fixed range so each class keeps the same colour
-        axes[row, 2].imshow(pred[..., k], cmap="viridis", vmin=0, vmax=num_classes - 1)
-        axes[row, 0].set_title(f"{region} input (slice {k})")
-        axes[row, 1].set_title(f"{region} ground truth")
-        axes[row, 2].set_title(f"{region} prediction")
-        for ax in axes[row]:
-            ax.axis("off")
+    for region, slices in regions.items():
+        slices = [k for k in slices if 0 <= k < label.shape[-1]] # stay inside the volume
+        fig, axes = plt.subplots(len(slices), 3, figsize=(9, 3 * len(slices)))
+        for row, k in enumerate(slices):
+            # prostate dice on just this slice, shows where along the prostate the prediction breaks down
+            dice = dice_and_iou(pred[..., k] == PROSTATE, label[..., k] == PROSTATE)[0]
+            axes[row, 0].imshow(image[..., k], cmap="gray")
+            axes[row, 1].imshow(label[..., k], cmap="viridis", vmin=0, vmax=num_classes - 1) # fixed range so each class keeps the same colour
+            axes[row, 2].imshow(pred[..., k], cmap="viridis", vmin=0, vmax=num_classes - 1)
+            axes[row, 0].set_title(f"{region} input (slice {k})")
+            axes[row, 1].set_title("ground truth" if first <= k <= last else "ground truth (no prostate)")
+            axes[row, 2].set_title(f"prediction (prostate DSC {dice:.2f})")
+            for ax in axes[row]:
+                ax.axis("off")
 
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-    print(f"saved {save_path}")
+        save_path = f"{save_prefix}_{region.lower()}.png"
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+        print(f"saved {save_path}")
 
 def main(root=data_root):
     # test split only, same seed as training so these patients were never seen
@@ -109,8 +118,10 @@ def main(root=data_root):
                 region_scores[region].append(score)
 
             # pictures of the first few test volumes, [0, 0] drops the batch and channel dims
+            # named by case (e.g. unet3d_Case_004_Week0_LFOV_apex.png), the test loader isn't shuffled so i matches splits["test"]
             if i < num_examples:
-                save_example(images[0, 0], labels[0], preds, f"{out_dir}/predictions/{model_name}_prediction_{i}.png")
+                case = os.path.basename(splits["test"][i][0]).replace(".nii.gz", "")
+                save_example(images[0, 0], labels[0], preds, f"{out_dir}/predictions/{model_name}_{case}")
     test_dice = total_dice / len(test_loader)
     test_iou = total_iou / len(test_loader)
 
