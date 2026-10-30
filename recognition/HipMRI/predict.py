@@ -2,6 +2,7 @@
 # on test cases, print out any results, and provide visualisations where applicable (e.g., prediction overlays, generated
 # samples, heatmaps). NumPy is allowed in this script for visualisation or loading data.
 
+import time
 import torch
 import matplotlib.pyplot as plt
 
@@ -79,17 +80,31 @@ def main(root=data_root):
     else:
         model = UNet2D(1, num_classes, base_filters)
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
-    model.eval()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device).eval()
 
-    # dice per class for each volume, then averaged over volumes
+    # dice and iou per class for each volume, then averaged over volumes
     total_dice = torch.zeros(num_classes)
+    total_iou = torch.zeros(num_classes)
     region_scores = {"whole": [], "apex": [], "base": []} # (dice, iou) per volume for each prostate region
+    times = [] # forward pass seconds per volume
+    if device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
     with torch.no_grad():
         for i, (images, labels) in enumerate(test_loader):
-            logits = model(images)
+            # synchronize so the timer waits for the gpu to actually finish
+            if device == "cuda":
+                torch.cuda.synchronize()
+            start = time.perf_counter()
+            logits = model(images.to(device))
+            if device == "cuda":
+                torch.cuda.synchronize()
+            times.append(time.perf_counter() - start)
+            logits = logits.cpu() # back to cpu so the scoring below is unchanged
             total_dice += dice_score(logits, labels.long(), num_classes)
 
             preds = logits.argmax(dim=1)[0] # (H, W, D), batch size is 1
+            total_iou += torch.tensor([dice_and_iou(preds == c, labels[0] == c)[1] for c in range(num_classes)])
             for region, score in prostate_regions(preds, labels[0]).items():
                 region_scores[region].append(score)
 
@@ -97,16 +112,23 @@ def main(root=data_root):
             if i < num_examples:
                 save_example(images[0, 0], labels[0], preds, f"{out_dir}/predictions/{model_name}_prediction_{i}.png")
     test_dice = total_dice / len(test_loader)
+    test_iou = total_iou / len(test_loader)
 
-    for name, d in zip(class_names, test_dice):
-        print(f"Test DSC {name}: {d:.4f}")
-    print(f"Min class DSC: {test_dice.min():.4f} | Mean DSC: {test_dice.mean():.4f}")
+    for name, d, j in zip(class_names, test_dice, test_iou):
+        print(f"Test {name}: DSC {d:.4f} | IoU {j:.4f}")
+    print(f"Min class DSC: {test_dice.min():.4f} | Mean DSC: {test_dice.mean():.4f} | Mean IoU: {test_iou.mean():.4f}")
 
     # mean over volumes, so the apex and base can be compared against the whole prostate
     print(f"\nProstate by region ({end_slices} slices at each end):")
     for region, scores in region_scores.items():
         dice, iou = torch.tensor(scores).mean(dim=0)
         print(f"{region:>5}: DSC {dice:.4f} | IoU {iou:.4f}")
+
+    # first case skipped, it includes one-off warm-up cost
+    case_times = torch.tensor(times[1:])
+    print(f"\nInference time per case ({device}): {case_times.mean():.3f} ± {case_times.std():.3f} s")
+    if device == "cuda":
+        print(f"Peak GPU VRAM: {torch.cuda.max_memory_allocated() / 1024**2:.0f} MB")
 
 if __name__ == "__main__":
     main()
