@@ -40,27 +40,36 @@
 
 ### 1.1 Background and Problem
 
-In Prostate Radiotherapy Planning (HipMRI), targeting a beam requires millimeter precision between the prostate and the surrounding critical organs (bladder, rectum, femoral heads), under and over contouring is not viable either as under contouring risks recurrence of tumours and over contouring irradiates the surrounding organs causing massiveissues. There are two main issues when trying to make models for this data. Firstly, as it is 3D data, if a 2D model attempts to learn it through slices it may result in jagged 3D boundaries and secondly, the prostate is rather small, with it making up less than 2% of the overall 3D volume, this requires thought on how best to score losses.
+In Prostate Radiotherapy Planning (HipMRI), targeting a beam requires millimeter precision between the prostate and the surrounding critical organs (bladder, rectum, femoral heads). Under contouring risks tumour recurrence, while over contouring irradiates the surrounding organs causing severe damage. 
+
+The HipMRI dataset contains 211 weekly volumes related to 38 patients, each volume has dimensions 256x256x128 and the labeled maps are segmented into six classes (background, body, bone, bladder, rectum, prostate). There are two main issues when trying to make models for this data. Firstly, as it is 3D data, if a 2D model attempts to learn it through slices it may result in jagged 3D boundaries and secondly the prostate is rather small, with it making up less than 2% of the overall 3D volume meaning that there is a massive class imbalance that needs to be looked at.
+
+Therefore, this report aims to identify whether incorporating 3D volumetric continuity through the 3D Improved U-Net eliminates the hazardous boundary and slice-transition error when compared against a 2D U-Net baseline. 
+
 
 ### 1.2 Addressing the Problem
 
-To address these issues, this project implements a 3D improved U-Net (Isensee et al, 2018). It allows the model to process whole volumes with 3D convolutions meaning that every prediction is informed by the slices above and below it. It is trained with a multi-class Dice loss that weights every class equally regardless of the size. The model will be analysed against a 2D U-Net baseline on the exact same patient level split in order to discover the effect 3D context has and whether it is capable of removing boundary and slice-transition errors or whether it just improves the easy central slices.
-
-![Model Diagram](model_diagram.drawio.png)
-
-*Figure 1: Model Architecture Flow*
+To address these issues, this project implemented a 3D Improved U-Net (Isensee et al, 2018). The 3D model takes the whole MRI volume as an input (not in slices) and outputs a six class voxel map. This allows the model to process whole volumes with 3D convolutions meaning that every prediction is informed by the slices above and below it. The model uses a multi-class dice loss using a soft dice that computes the dice per class and then averages, meaning that the prostate counts as much as the much larger background. This handles the class imbalance by embedding inside the loss function that every class should be taken into account equally. The model was analysed against a 2D U-Net baseline on the exact same patient level split, and data pre-processing in order to discover the effect 3D context has and whether it is capable of removing boundary and slice-transition errors or whether it just improves the easy central slices.
 
 ### 1.3 How It Works
 
-The network in Figure 1 is an 3D Improved U-Net, this means that it is an starts with an encoder, then a decoder and has skip connections.
+![Model Diagram](model_diagram.drawio.png)
 
-The Encoder (downsampling, blue) has five levels with 16, 32, 64, 128 and 256 channels. Each level starts with a 3x3x3 convolution with stride 2 (except level 1 which uses stride 1) in order to halve the spatial dimension. This brings a 256x256x128 down to the bottleneck of 16x16x8.
+*Figure 1: Model Architecture Flow (Blue: encoder, green: decoder, dashed: concatenated skip connections, numbers below each block: spatial size, Seg 3/2/1: 1x1x1 segmentation layers summed for deep supervision)*
 
-The output from each encoder is then passed into a residual block that is made up of two 3x3x3 convolutions, each preceeded by instance normalisation, leaky ReLU (slope = 0.01) and with a dropout (p=0.3) between them. The output from the residual block is then added to the original output from the encoder to make that levels skip connection (dotted arrows).
+The network shown in Figure 1 is a 3D Improved U-Net: an encoder that compresses the volume down to a small bottleneck, a decoder that builds it back up to full resolution, and skip connections between matching levels that carry across the fine spatial detail lost during the downsampling stage. The output is a six channel segmentation (one channel per class) at the full 256x256x128 resolution.
 
-The model then upscales by a factor of two using the nearest neighbour, then uses a 3x3x3 convolution to halve the channels, the result is concatenated with the matching skip connection which is used to recover the spatial detail lost during the downsampling. Then a localisation module merges the two and ensures that the channels halve.
+What makes it improved when compared to the standard U-Net are the following changes from Isensee et al. (2018):
+- Pre-activation residual blocks in the encoder, which give gradients a shortcut path through the deeper network.
+- Deep supervision, where segmentations from several decoder levels are combined into the final output.
 
-Lastly, the deep supervision is made up of three 1x1x1 convolutions that produce six class segmentation maps at levels 3, 2 and 1. Each coarser map is trilinearly upsampled and added element-wise to the next. This means the final output combines predictions from three different levels and allows for the gradients to directly affect deeper layers.
+The encoder (downsampling, blue) has five levels with 16, 32, 64, 128 and 256 channels. Each level starts with a 3x3x3 convolution with stride 2 (except level 1, which uses stride 1) to halve each spatial dimension, bringing 256x256x128 down to the 16x16x8 bottleneck. That output is then passed through a residual block of two 3x3x3 convolutions, each preceded by instance normalisation and leaky ReLU (slope = 0.01), with dropout (p=0.3) between them. The residual block's output is added back onto its input, and at levels 1 to 4 this sum is stored as that level's skip connection (dashed arrows). 
+
+The decoder (upsampling, green) at each level upsamples by a factor of two using nearest neighbour, then uses a 3x3x3 convolution that halves the channels. The result is then concatenated with the matching skip connection, which doubles the channels again. At levels 4 to 2 a localisation module then merges the two (3x3x3 convolution that keeps channel count, followed by a 1x1x1 convolution that halves it).
+
+Lastly, the deep supervision (Seg 3/2/1) is made up of three 1x1x1 convolutions which use the outputs of levels 3, 2 and 1 as six class segmentation maps. Each coarser map is trilinearly upsampled and added element wise to the next, so the final output combines the predictions that are made at three resolutions. The lower levels feed straight into the output, this means that the gradients from loss reach them directly rather than having ot go through the rest of the decoder. 
+
+The network outputs raw scores for every voxel. During training, a softmax turns these into class probabilities inside the dice loss and at prediction time, the argmax over the six channels gives each voxel its specific class (the one that is most likely, as deemed by the model).
 
 ---
 
