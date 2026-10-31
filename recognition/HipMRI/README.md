@@ -103,7 +103,7 @@ The chosen dataset is HipMRI, focusing on Prostate Radiotherapy Planning. The ch
 
 ### 2.3 Preliminary Feasibility Evidence
 
-An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128 (there is one volume that has 256x256x144, but that gets clipped to a depth of 128). The data was split into `semantic_MRs` containing the raw MRI volumes and `semantic_labels_only` containing the source of truth for the segmentation by label. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
+An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128 (there is one volume that has 256x256x144, but that gets clipped to a depth of 128). The data was split into `semantic_MRs_anon` containing the raw MRI volumes and `semantic_labels_anon` containing the source of truth for the segmentation by label. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
 
 ### 2.4 Risks, Budget and Fallback
 
@@ -341,15 +341,17 @@ Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all
 
 **Specific tasks:**
 
-- Implementing functions that were scaffolded for it
-- Researching and explaining different techniques to me
-- Used it to check over what I had written in the README and tell me where it was weak / could be improved (flimsy explanations, lack of context, lack of analysis)
+- Implementing functions that were scaffolded for it.
+- Researching and explaining different techniques to me.
+- Used it to check over what I had written in the README and tell me where it was weak / could be improved (flimsy explanations, lack of context, lack of analysis).
+- Got it to make the README table of contents, make and populate the tables.
 
 **How I audited the AI:**
 
 - I would not allow the AI to automatically input any code, instead writing it in myself understanding each line before moving onto the next. Whenever I didn't understand what it had done, I would get it to confirm the meaning behind the line.
 - I made sure to test that the functions worked together in a smoke test before doing a full long run.
 - When it suggested a reference, I would go to said reference and find the place where it said the thing being referenced.
+- Numbers that it put inside the tables were checked against the outputs in the ".out" files from both the training runs and the predict runs.
 
 ---
 
