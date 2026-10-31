@@ -245,7 +245,7 @@ Both models are evaluated on the same 6 patients with 27 volumes. The table belo
 | **Mean** | 0.9279 | 0.9356 | +0.0077 | 0.8714 | 0.8842 | +0.0128 |
 | **Min class** | 0.8561 (Rectum) | 0.8602 (Prostate) | +0.0041 | | | |
 
-This table shows just the prostate, specifically focusing on the last 5 slices on the apex and on the base as determined by what the label says should be the lowest and the highest slice.
+This table shows just the prostate, specifically focusing on the last 5 slices on the apex and on the base as determined by what the label says should be the lowest and the highest slice. Note that there is a limitation when scoring in this manner, it does not penalise the model for making a claim that there is a prostate outside of the areas that the label states there is a prostate (this is only penalised in the whole section).
 
 | Region | 2D DSC | 3D DSC | Difference | 2D IoU | 3D IoU | Difference |
 |---|---|---|---|---|---|---|
@@ -253,31 +253,11 @@ This table shows just the prostate, specifically focusing on the last 5 slices o
 | Apex | 0.7854 | 0.8418 | +0.0564 | 0.6659 | 0.7455 | +0.0796 |
 | Base | 0.7718 | 0.7630 | -0.0088 | 0.6390 | 0.6275 | -0.0115 |
 
-It can be seen that the 3D model achieves better results on every section on both tables when compared with the 2D model except for the Base slices where it scores just below the 2D model.
+Looking at both tables, it can be seen that the 3D model is on the whole achieving better results in every section when compared with the 2D model. This has the exception of the base slices where in the prostate it scores just below the 2D model (-0.0088 DSC, -0.0115 IoU). The 3D model makes its biggest gain against the 2D model at the apex looking at the prostate (+0.0564 DSC, 0.0796 IoU).
 
-### 6.2 Resource Profiling
-
-```text
-Test DSC Background: 0.9978
-Test DSC Body: 0.9880
-Test DSC Bone: 0.9267
-Test DSC Bladder: 0.9591
-Test DSC Rectum: 0.8821
-Test DSC Prostate: 0.8601
-Min class DSC: 0.8601 | Mean DSC: 0.9356
-
-Prostate by region (5 slices at each end):
-whole: DSC 0.8601 | IoU 0.7562
- apex: DSC 0.8419 | IoU 0.7455
- base: DSC 0.7629 | IoU 0.6275
-```
 Globally the 3D model achieves a prostate Dice Similarity Coefficient (DSC) of 0.86 and an Intersection over Union (IoU) of 0.7562 which exceeds the 0.7 target. However, this score masks a weakness over the five most superior (base) slices obtaining a DSC of 0.7629 and an IoU of 0.6275.
 
-The model ran for 55 minutes and had a peak VRAM of 20.54GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
-
-The model ran for 57 minutes and had a peak VRAM of 21.47GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
-
-
+### 6.2 Resource Profiling
 
 | Metric | 2D U-Net | 3D Improved U-Net | Difference |
 |---|---|---|---|
@@ -287,22 +267,71 @@ The model ran for 57 minutes and had a peak VRAM of 21.47GB. The outputs of the 
 | Inference time per case | 0.055 s | 0.127 s | +0.072 s |
 | Training time (100 epochs) | 55 min | 58 min | +3 min |
 
+The resource consumption of the 2D model and the 3D model are fairly comparable. The specification warned that the 3D model may need 5-10x the GPU memory and training time, although here it doesnt, the training only requires about 1GB more VRAM and 3 more minutes. The main difference is 5x the parameters, the inference is 2.3x slower, but the 0.13 seconds per volume is insignificant considering how much time it would take someone to do the segmentation clinically.
+
 ### 6.3 Qualitative Error Autopsies
 
-– In-depth qualitative error autopsies analyzing 3–5 representative failure cases from the dataset
-(diagnosing root triggers and failure modes).
+Four representative failure cases from the test set are examined below, two at the apex and two at the base. Each figure shows the same slices for both models, with the prostate Dice for each slice in the prediction title. Columns and colours are as in Figure 2.
 
-Looking at the below images (unet3d_prediction_0.png & unet3d_prediction_0.png), the same slice of the image, apex slice 56 has been predicted to have no prostate where the ground truth has shown that it is there. This happened to both 2D and 3D and looking at the input image, unlike the middle slice where it shows a different colour the apex shows a faint shift that is relatively unnoticeable and further it is small. Further, looking at the base slice 84, it can be seen that the 2D model overcontours by a lot, where the 3D model only overcontours a little. This failure case is likely due to the more complex shape, not being round but having a concave section.
+#### Case 1: Case 008 apex, missed by both models
 
-A clear section that the 2D model is better than the 3D is with (unet_2d_prediction_2, unet_3d_prediction_2) in the base input slice 67 where the 2D unet, although it predicts it a bit off where it is supposed to be, it puts some there, whereas the 3D model predicts that there is no prostate there.
+| 2D U-Net | 3D Improved U-Net |
+|---|---|
+| ![2D U-Net apex slices of Case 008](2D_Unet_output/predictions/unet_2d_Case_008_Week0_LFOV_apex.png) | ![3D Improved U-Net apex slices of Case 008](3D_Model/predictions/unet3d_Case_008_Week0_LFOV_apex.png) |
 
-Looking now at (unet2d_prediction_1, unet3d_prediction_1), there is a clear difference in the apex slice, where the 3d model made a valid prediction, the 2d model states that there is no prostate there. This clearly shows that although the Quantitative analysis shows that there is improvement in the Apex section in the 3D model.
+*Figure 8: Case 008 apex, slices 55–58 (slice 55 has no prostate in the ground truth).*
 
-All of these images show that the middle input slice seems to be well predicted with both the 2D and 3D models which aligns with the quantitative data that has been analysed. Although, there is still a clear issue with the boundaries and the slice transitions in both models, mainly in the base slices
+Looking at figure 8, both models miss the first three prostate slices completely, with a DSC of 0 on each. The likely cause is the fact that the prostate at the apex is very small and has almost no contrast with the surrounding tissue in the input MRI, so there is little signal for either model to detect. Further the 3D models extra context was not enough when the signal was as faint as it is. This is very clear under contouring at the apex and would leave this part of the prostate untreated, which would risk the tumour recurring. Neither model is better in this scenario.
+
+#### Case 2: Case 009 apex, 3D model succeeds where 2D fails
+
+| 2D U-Net | 3D Improved U-Net |
+|---|---|
+| ![2D U-Net apex slices of Case 009](2D_Unet_output/predictions/unet_2d_Case_009_Week0_LFOV_apex.png) | ![3D Improved U-Net apex slices of Case 009](3D_Model/predictions/unet3d_Case_009_Week0_LFOV_apex.png) |
+
+*Figure 9: Case 009 apex, slices 47–50 (slice 47 has no prostate in the ground truth).*
+
+The 3D model finds prostate on all slices, it is present from the first slice and it holds onto it until the end (DSC 0.00, 0.75, 0.85, 0.91 on slices 47-50). The 2D model misses the slices 48 and 49 entirely and only reaches 0.59 on slice 50. Notably the 3D model predicts a small amount of prostate on slice 47 where the ground truth shows none. The likely cause for this is the fact that the 3D model can follow the prostate down from the slices above where they are larger and clearer which likely led to the overshoot in slice 47, whereas the 2D model only sees each individual slice so when it is faint it will be unclear. This is the most clear example of the apex improvement measured in section 6.1. Note that the 3D model here is much closer to being usable although the one slice overshoot on slice 47 would still need a specialist to get rid of it.
+
+#### Case 3: Case 026 base, 2D model succeeds where 3D fails
+
+| 2D U-Net | 3D Improved U-Net |
+|---|---|
+| ![2D U-Net base slices of Case 026](2D_Unet_output/predictions/unet_2d_Case_026_Week0_LFOV_base.png) | ![3D Improved U-Net base slices of Case 026](3D_Model/predictions/unet3d_Case_026_Week0_LFOV_base.png) |
+
+*Figure 10: Case 026 base, slices 65–68 (slice 68 has no prostate in the ground truth).*
+
+In figure 10, the 3D model under contours slice 66 and misses slice 67 completely, the 2D model scores 0.72 and 0.44 on the same slices. The 2D model is clearly better here and the under contouring at the base by the 3D model leaves a risk of tumour being untreated at the point where prostate meets bladder. The likely cause is that the base of the prostate becomes a thin sliver pressed against the bladder and the 3D model smooths these away using the context from slices around them, while the 2D model is able to judge each slice on its own.
+
+#### Case 4: Case 008 base, both models extend past the prostate
+
+| 2D U-Net | 3D Improved U-Net |
+|---|---|
+| ![2D U-Net base slices of Case 008](2D_Unet_output/predictions/unet_2d_Case_008_Week0_LFOV_base.png) | ![3D Improved U-Net base slices of Case 008](3D_Model/predictions/unet3d_Case_008_Week0_LFOV_base.png) |
+
+*Figure 11: Case 008 base, slices 82–85 (slice 85 has no prostate in the ground truth).*
+
+In figure 11 both of the models predict that the prostate is in slice 85 which is past where the ground truth says it ends. Neither model is better in this scenario and the likely cause is that the prostate and bladder in this input image look similar at this boundary and the prostate doesnt look like it ends sharply between slices. This type of over contouring requires careful consideration as it puts organs at risk and would need to be removed by a specialist.
+
+#### Summary
+
+Both models segment the middle of the prostate well. Their failures are concentrated in the first and last few slices. The 3D model seems to overshoot more often, when it finds the image it predicts it well but will tend to overshoot. The 2D model does not suffer from this failure case as it has no previous context, although this means that sometimes it will not find the prostate at all for multiple slices. This is an important difference and shows the different failure case of the two different models.
 
 ### 6.4 Engineering Recommendation
 
-Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all aspects of quality and only has slightly worse resource consumption. The slight extra resource consumption is worth the extra performance quality of the model. Noting that it is slightly worse in IoU and DSC in the base slices, it well makes up for it in the apex slices. The recommendation that would be given is to make use of the new model to speed up segmentation of MRIs but to pay more attention to the areas where it is known to be lacking, such as the base slices.
+The table below checks both models against the acceptance criteria set in the [feasibility report](#21-user-need-scope-and-acceptance-criteria).
+
+| Criterion | 3D Improved U-Net | 2D U-Net | Result |
+|---|---|---|---|
+| 1. Prostate DSC > 0.7 | 0.8602 | 0.8592 | Pass (both) |
+| 2. Apex and base prostate DSC > 0.7 | Apex 0.8418, Base 0.7630 | Apex 0.7854, Base 0.7718 | Pass (both) |
+| 3. Prostate IoU > 0.7 | 0.7562 | 0.7547 | Pass (both) |
+| 4. Training time < 5 hours and peak VRAM < 20 GB | 58 min, 21.47 GB | 55 min, 20.54 GB | Time passes, VRAM fails (both) |
+| 5. > 5% DSC improvement of 3D over 2D at the apex and base | Apex +7.2%, Base −1.1% |  | Partial (apex only) |
+
+Note that criteria 5 uses relative improvement, for example for the apex (0.8418 − 0.7854) / 0.7854 = +7.2% improvement.
+
+Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all aspects of quality and only has slightly worse resource consumption. Looking at the table above shows that both models pass criteria 1, 2, 3, and the time constraint in criteria 4. They both fail the VRAM consumption in training by similar amounts although the 3D model is only about 1.5 GB over and it still fits within a single A100 GPU so it is deemed insignificant. Further it is important to note that looking at criteria 5, although there is a 1.1% decrease in performance in the base slices, there is a 7.2% increase in performance in the apex slices. The added 3D context has shown to reduce the boundary errors at the apex of the prostate, although it has shown it has not helped on the base. The recommendation that would be given is to make use of the new 3D model to speed up the segmentation of MRIs but to pay more attention to the areas it is known to be lacking, specifically the base slices and look out for the over countouring when it hangs onto prostate that is not there.
 
 ---
 
