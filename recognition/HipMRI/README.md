@@ -10,6 +10,7 @@
     - 1.1 [Background and Problem](#11-background-and-problem)
     - 1.2 [Addressing the Problem](#12-addressing-the-problem)
     - 1.3 [How It Works](#13-how-it-works)
+    - 1.4 [2D U-Net Baseline](#14-2d-u-net-baseline)
 2. [Feasibility Report](#2-feasibility-report)
     - 2.1 [User Need, Scope and Acceptance Criteria](#21-user-need-scope-and-acceptance-criteria)
     - 2.2 [Model Choice and Course Concepts](#22-model-choice-and-course-concepts)
@@ -18,10 +19,10 @@
 3. [Run Instructions](#3-run-instructions)
     - 3.1 [Dependencies](#31-dependencies)
     - 3.2 [Setup and Reproducibility](#32-setup-and-reproducibility)
-    - 3.3 [Usage] (#33-usage)
+    - 3.3 [Usage](#33-usage)
 4. [Inputs, Outputs and Plots](#4-inputs-outputs-and-plots)
-    - 4.1 [3D Improved U-Net](#41-3d-improved-u-net)
-    - 4.2 [2D U-Net Baseline](#42-2d-u-net-baseline)
+    - 4.1 [Example Inputs and Outputs](#41-example-inputs-and-outputs)
+    - 4.2 [Training Curves](#42-training-curves)
 5. [Pre-Processing and Data Splits](#5-pre-processing-and-data-splits)
     - 5.1 [Volume Pairing and Shape Checks](#51-volume-pairing-and-shape-checks)
     - 5.2 [Normalisation and Label Encoding](#52-normalisation-and-label-encoding)
@@ -71,6 +72,12 @@ The decoder (upsampling, green) at each level upsamples by a factor of two using
 Lastly, the deep supervision (Seg 3/2/1) is made up of three 1x1x1 convolutions which use the outputs of levels 3, 2 and 1 as six class segmentation maps. Each coarser map is trilinearly upsampled and added element wise to the next, so the final output combines the predictions that are made at three resolutions. The lower levels feed straight into the output, this means that the gradients from loss reach them directly rather than having to go through the rest of the decoder. 
 
 The network outputs raw scores for every voxel. During training, a softmax turns these into class probabilities inside the dice loss and at prediction time, the argmax over the six channels gives each voxel its specific class (the one that is most likely, as deemed by the model).
+
+### 1.4 2D U-Net Baseline
+
+The standard 2D U-Net is implemented as taught in COMP3710. This consists of 5 levels with an encoder, bottleneck, decoder and skip connections between matching encoder and decoder levels. It takes input as slices of the whole volume (256x256x128), with each slice being 256x256x1. This is the exact comparison that is being evaluated as the 2D model is unable to look at the slices above and below it. It has the same overall shape as the 3D model, it uses max pooling for the downsampling blocks, and transposed convolutions for upsampling, and two 3x3 convolutions with a batch norm and ReLU at each level. It doesn't have any residual blocks or deep supervision.
+
+It is trained through the exact same pipeline as the 3D model, with the same data split, pre-processing, augmentation, DSC, optimiser, and epochs. This ensures that the only difference is the fact that the model is 2D. It takes in and returns whole volumes like the 3D model, it just stacks the slices together to form the output shape (256x256x128) so that predict.py can evaluate them both in the same way.
 
 ---
 
@@ -143,80 +150,43 @@ python plot_curves.py # loss and dice curves run for is_3d false
 
 ## 4. Inputs, Outputs and Plots
 
-### 4.1 3D Improved U-Net
+There are two different areas in which inputs and outputs are taken. In the training (train.py) the inputs are the images and labels, and the outputs are the weights (.pt), the curve data (.json) and various updates printed to the terminal (time, epoch, DSC, VRAM). In the usage of the model (predict.py) the inputs are the images and the ground truth labels and the outputs are the metrics, images showing input, ground truth, and model segmentation output and overall stats printed to the terminal (inference time, DSC, IoU).
 
-The type of inputs that are shown in the model can be seen below in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked on top of each other and passed into the model. Further the ground truth is also used in the training of the model purely for generating a loss function and evaluating how well the model predicted it.
+### 4.1 Example Inputs and Outputs
 
-![Model Input, Output and Truth img 0](3D_Model/predictions/unet3d_prediction_0.png)
+![3D Improved U-Net input, ground truth and prediction for the middle prostate slices of Case 008](3D_Model/predictions/unet3d_Case_008_Week0_LFOV_middle.png)
 
-*Image 1*
+*Figure 2: 3D Improved U-Net on test Case 008 (Week 0), middle prostate slices 69–71. Columns: input MRI, ground truth, prediction. Colours: dark purple: background, blue purple: body, teal: bone, green: bladder, light green: rectum, yellow: prostate.*
 
-![Model Input, Output and Truth img 1](3D_Model/predictions/unet3d_prediction_1.png)
+![2D U-Net input, ground truth and prediction for the middle prostate slices of Case 008](2D_Unet_output/predictions/unet_2d_Case_008_Week0_LFOV_middle.png)
 
-*Image 2*
+*Figure 3: 2D U-Net baseline on the same case and slices as Figure 2. Columns and colours as in Figure 2.*
 
-![Model Input, Output and Truth img 2](3D_Model/predictions/unet3d_prediction_2.png)
+Figures 2 and 3 show both the 3D Model and 2D model input, expected output and output. The input to the model is a 1 channel volume which can be seen as the images on the left. The output / prediction of the model can be seen on the right and is a segmentation of the image with six classes. The middle image shows the expected output, or the ground truth, what the prediction should be compared against. Predict.py generates 9 of these figures for each model, looking at 3 different volumes. On each volume it looks at 3 different types of slices, the middle, apex and base. For the middle it shows the three middle slices. For the apex and base it shows one slice outside the prostate and three inside. This is done to be able to see how the model reacts on a wider range around the predicted fail cases (apex and base).
 
-*Image 3*
+### 4.2 Training Curves
 
-*Figure 2: Model input, label ground truth, prediction segmentation (Dark purple: background, Blue purple: body, Teal: bone, Green: bladder, light green: rectum, yellow: prostate)*
+![3D Improved U-Net validation Dice per class per epoch](3D_Model/unet3d_dice.png)
 
-The model ran for 57 minutes and had a peak VRAM of 21.47GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+*Figure 4: 3D Improved U-Net: validation Dice per class per epoch*
 
-![Dice per class per epoch](3D_Model/unet3d_dice.png)
+![2D U-Net validation Dice per class per epoch](2D_Unet_output/unet_2d_dice.png)
 
-*Figure 3: Dice per class per Epoch*
+*Figure 5: 2D U-Net: validation Dice per class per epoch*
 
-![Loss per epoch of training and validation](3D_Model/unet3d_loss.png)
+![3D Improved U-Net training and validation loss per epoch](3D_Model/unet3d_loss.png)
 
-*Figure 4: Training and Validation Loss of each epoch*
+*Figure 6: 3D Improved U-Net: training and validation loss per epoch*
 
-Figure 3 shows that the per class DSC was much climbed very fast for the first 20 epochs and then slowly improved as it trained further epochs. Figure 4 shows the train and validation loss tightly linked together the whole way down with the validation loss just a bit behind the train loss. This closeness of the losses shows that the model did not fall into a trap of memorising data.
+![2D U-Net training and validation loss per epoch](2D_Unet_output/unet_2d_loss.png)
 
-Globally the 3D model achieves a prostate Dice Similarity Coefficient (DSC) of 0.86 and an Intersection over Union (IoU) of 0.7562 which exceeds the 0.7 target. However, this score masks a weakness over the five most superior (base) slices obtaining a DSC of 0.7629 and an IoU of 0.6275.
+*Figure 7: 2D U-Net: training and validation loss per epoch*
 
-```text
-Test DSC Background: 0.9978
-Test DSC Body: 0.9880
-Test DSC Bone: 0.9267
-Test DSC Bladder: 0.9591
-Test DSC Rectum: 0.8821
-Test DSC Prostate: 0.8601
-Min class DSC: 0.8601 | Mean DSC: 0.9356
+As can be seen by the 2D and 3D models Dice and Loss plots in Figures 4 to 7 both models DSC quickly rose over the first 20 epochs and then levelled off for the rest of the training. It can also be seen that the prostate is the lowest and the noisiest class while still constantly slowly increasing.
 
-Prostate by region (5 slices at each end):
-whole: DSC 0.8601 | IoU 0.7562
- apex: DSC 0.8419 | IoU 0.7455
- base: DSC 0.7629 | IoU 0.6275
-```
+It can also be seen that the training and validation loss graphs for both follow the same pattern, with the validation loss trailing closely behind the training loss. By around epoch 40 the validation loss is only a little bit larger the training loss meaning that there was only a minimal amount of overfitting that did not increase much over the 100 epochs. Note that the validation loss starts under the training loss because the dropout and augmentation of the data only happens during the training. The 2D model's loss starts higher (0.8 vs 0.6) and takes around 10 epochs to catch up and its final train/validation gap is slightly larger meaning that it likely overfitted to the data a bit more, although this level of overfitting is normal and wouldn't heavily affect the models performance.
 
-### 4.2 2D U-Net Baseline
-
-![Model Input, Output and Truth img 0](2D_Unet_output/predictions/unet_2d_prediction_0.png)
-
-*Image 1*
-
-![Model Input, Output and Truth img 1](2D_Unet_output/predictions/unet_2d_prediction_1.png)
-
-*Image 2*
-
-![Model Input, Output and Truth img 2](2D_Unet_output/predictions/unet_2d_prediction_2.png)
-
-*Image 3*
-
-*Figure 5: Model input, label ground truth, prediction segmentation (Dark purple: background, Blue purple: body, Teal: bone, Green: bladder, light green: rectum, yellow: prostate)*
-
-The model ran for 55 minutes and had a peak VRAM of 20.54GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
-
-![Dice per class per epoch](2D_Unet_output/unet_2d_dice.png)
-
-*Figure 6: Dice per class per Epoch*
-
-![Loss per epoch of training and validation](2D_Unet_output/unet_2d_loss.png)
-
-*Figure 7: Training and Validation Loss of each epoch*
-
-Figure 6 shows that the per class DSC climbed very fast initially (first 20 epochs) but then mostly levelled off for the rest of the training. Figure 7 shows that similar to figure 4 there was no memorisation of data and the validation loss stayed tightly linked to the training loss, trailing just a bit behind.
+These plots also determine which model gets saved, the model with the best minimum class validation score (the model with the best worst class validation score) is the model that gets saved and used.
 
 ---
 
@@ -240,7 +210,7 @@ Now, in the training set only, the data was augmented further. This was done as 
 
 Each augmentation had a 50% chance of happening, so that the amount of limited data could be extended and be more 'unique' data. The following augmentation techniques were performed on the images and labels of the training (needs to apply to both or else if the image is rotated then the label should be as well or it won't have the correct loss). Isensee et al, used random rotations, random scaling, random elastic deformations, gamma correction augmentation and mirroring.
 
-There were left and right mirroring (flips across the height plane), when looking at the images in figure 5, it can be seen that the image is roughly symmetric left of the body to right of body (up and down looking at the scans), it would not be right to flip it front to back in the body (left right in image) as that would place the bladder below the prostate which isn't possible and would poison the data.
+There were left and right mirroring (flips across the height plane), when looking at the images in Figures 2 and 3, it can be seen that the image is roughly symmetric left of the body to right of body (up and down looking at the scans), it would not be right to flip it front to back in the body (left right in image) as that would place the bladder below the prostate which isn't possible and would poison the data.
 
 There were axial rotations of up to 15 degrees positively and negatively and also zooming in or out of up to 10%. This is useful as it simulates the small differences in a patient's positioning and body or organ size. A nearest neighbour resample is then used so every voxel stays belonging to only one class.
 
@@ -286,6 +256,28 @@ This table shows just the prostate, specifically focusing on the last 5 slices o
 It can be seen that the 3D model achieves better results on every section on both tables when compared with the 2D model except for the Base slices where it scores just below the 2D model.
 
 ### 6.2 Resource Profiling
+
+```text
+Test DSC Background: 0.9978
+Test DSC Body: 0.9880
+Test DSC Bone: 0.9267
+Test DSC Bladder: 0.9591
+Test DSC Rectum: 0.8821
+Test DSC Prostate: 0.8601
+Min class DSC: 0.8601 | Mean DSC: 0.9356
+
+Prostate by region (5 slices at each end):
+whole: DSC 0.8601 | IoU 0.7562
+ apex: DSC 0.8419 | IoU 0.7455
+ base: DSC 0.7629 | IoU 0.6275
+```
+Globally the 3D model achieves a prostate Dice Similarity Coefficient (DSC) of 0.86 and an Intersection over Union (IoU) of 0.7562 which exceeds the 0.7 target. However, this score masks a weakness over the five most superior (base) slices obtaining a DSC of 0.7629 and an IoU of 0.6275.
+
+The model ran for 55 minutes and had a peak VRAM of 20.54GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+
+The model ran for 57 minutes and had a peak VRAM of 21.47GB. The outputs of the model are both as seen above and also a json file containing information of the data (due to the fact some environments do not have matplotlib). The information from this json file has been used to plot the following, looking at the dice score and the loss in validation and test per epoch.
+
+
 
 | Metric | 2D U-Net | 3D Improved U-Net | Difference |
 |---|---|---|---|
