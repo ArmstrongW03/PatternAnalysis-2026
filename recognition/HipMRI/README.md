@@ -18,6 +18,7 @@
 3. [Run Instructions](#3-run-instructions)
     - 3.1 [Dependencies](#31-dependencies)
     - 3.2 [Setup and Reproducibility](#32-setup-and-reproducibility)
+    - 3.3 [Usage] (#33-usage)
 4. [Inputs, Outputs and Plots](#4-inputs-outputs-and-plots)
     - 4.1 [3D Improved U-Net](#41-3d-improved-u-net)
     - 4.2 [2D U-Net Baseline](#42-2d-u-net-baseline)
@@ -40,9 +41,9 @@
 
 ### 1.1 Background and Problem
 
-In Prostate Radiotherapy Planning (HipMRI), targeting a beam requires millimeter precision between the prostate and the surrounding critical organs (bladder, rectum, femoral heads). Under contouring risks tumour recurrence, while over contouring irradiates the surrounding organs causing severe damage. 
+In Prostate Radiotherapy Planning (HipMRI), targeting a beam requires millimetre precision between the prostate and the surrounding critical organs (bladder, rectum, femoral heads). Under contouring risks tumour recurrence, while over contouring irradiates the surrounding organs causing severe damage. 
 
-The HipMRI dataset contains 211 weekly volumes related to 38 patients, each volume has dimensions 256x256x128 and the labeled maps are segmented into six classes (background, body, bone, bladder, rectum, prostate). There are two main issues when trying to make models for this data. Firstly, as it is 3D data, if a 2D model attempts to learn it through slices it may result in jagged 3D boundaries and secondly the prostate is rather small, with it making up less than 2% of the overall 3D volume meaning that there is a massive class imbalance that needs to be looked at.
+The HipMRI dataset contains 211 weekly volumes related to 38 patients, each volume has dimensions 256x256x128 and the labelled maps are segmented into six classes (background, body, bone, bladder, rectum, prostate). There are two main issues when trying to make models for this data. Firstly, as it is 3D data, if a 2D model attempts to learn it through slices it may result in jagged 3D boundaries and secondly the prostate is rather small, with it making up less than 2% of the overall 3D volume meaning that there is a massive class imbalance that needs to be looked at.
 
 Therefore, this report aims to identify whether incorporating 3D volumetric continuity through the 3D Improved U-Net eliminates the hazardous boundary and slice-transition error when compared against a 2D U-Net baseline. 
 
@@ -67,7 +68,7 @@ The encoder (downsampling, blue) has five levels with 16, 32, 64, 128 and 256 ch
 
 The decoder (upsampling, green) at each level upsamples by a factor of two using nearest neighbour, then uses a 3x3x3 convolution that halves the channels. The result is then concatenated with the matching skip connection, which doubles the channels again. At levels 4 to 2 a localisation module then merges the two (3x3x3 convolution that keeps channel count, followed by a 1x1x1 convolution that halves it).
 
-Lastly, the deep supervision (Seg 3/2/1) is made up of three 1x1x1 convolutions which use the outputs of levels 3, 2 and 1 as six class segmentation maps. Each coarser map is trilinearly upsampled and added element wise to the next, so the final output combines the predictions that are made at three resolutions. The lower levels feed straight into the output, this means that the gradients from loss reach them directly rather than having ot go through the rest of the decoder. 
+Lastly, the deep supervision (Seg 3/2/1) is made up of three 1x1x1 convolutions which use the outputs of levels 3, 2 and 1 as six class segmentation maps. Each coarser map is trilinearly upsampled and added element wise to the next, so the final output combines the predictions that are made at three resolutions. The lower levels feed straight into the output, this means that the gradients from loss reach them directly rather than having to go through the rest of the decoder. 
 
 The network outputs raw scores for every voxel. During training, a softmax turns these into class probabilities inside the dice loss and at prediction time, the argmax over the six channels gives each voxel its specific class (the one that is most likely, as deemed by the model).
 
@@ -83,19 +84,19 @@ To evaluate how well the model has addressed the problem some testable acceptanc
 
 **Testable acceptance criteria:**
 
-1. Sorensen-Dice similarity greater than 0.7 on test set
-2. Base and Apex specific Dice similarity greater than 0.7 on the test set
-3. Intersection-over-Union (IoU) greater than 0.7 on test set
+1. Sorensen-Dice similarity (DSC) greater than 0.7 in the prostate class on the test set
+2. Base and Apex specific DSC greater than 0.7 in the prostate class on the test set
+3. Intersection-over-Union (IoU) greater than 0.7 in the prostate class on the test set
 4. Less than 5 hours of training time and less than 20GB of peak VRAM on an a100 GPU
-5. Noticeable difference between 2D and 3D models (> 5% improvement in test results)
+5. Noticeable difference between 2D and 3D models: > 5% improvement in test results when looking at DSC in base and apex slices of the prostate
 
 ### 2.2 Model Choice and Course Concepts
 
-The chosen dataset is HipMRI, focusing on Prostate Radiotherapy Planning. The chosen model architecture is the 3D Improved U-Net (Hard Difficulty). This model will be compared against a baseline 2D U-Net. This comparison will be used to weigh up if the larger computational expenses in the 3D improved U-Net will result in a better solution to the given problem. Testing whether it can improve upon the 2D U-Net's inability to take into account changes in 3D space (boundary and slice-transition errors) and whether this potential improvement is worth the increased compute required. The course concepts and literature support the choice of a 3D U-Net as U-Net's are used for segmenting data in high resolution using skip connections to avoid loosing context from the downsampling process. Further literature supports giving the model 3D context over 2D slices as a way of allowing it to understand the way the data reacts across slices which is the exact problem that needs to be fixed.
+The chosen dataset is HipMRI, focusing on Prostate Radiotherapy Planning. The chosen model architecture is the 3D Improved U-Net (Hard Difficulty). This model will be compared against a baseline 2D U-Net. This comparison will be used to weigh up if the larger computational expenses in the 3D improved U-Net will result in a better solution to the given problem. Testing whether it can improve upon the 2D U-Net's inability to take into account changes in 3D space (boundary and slice-transition errors) and whether this potential improvement is worth the increased compute required. The course concepts and literature support the choice of a 3D U-Net as U-Nets are used for segmenting data in high resolution using skip connections to avoid losing context from the downsampling process. Further literature supports giving the model 3D context over 2D slices as a way of allowing it to understand the way the data reacts across slices which is the exact problem that needs to be fixed.
 
 ### 2.3 Preliminary Feasibility Evidence
 
-An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128. The data was split into `semantic_MRs` containing the raw MRI volumes and `semantic_labels_only` containing the source of truth for the segmentation by label. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
+An initial data audit showed that there were a total of 211 scans, relating to 38 unique patients and each scan was a volume of shape 256x256x128 (there is one volume that has 256x256x144, but that gets clipped to a depth of 128). The data was split into `semantic_MRs` containing the raw MRI volumes and `semantic_labels_only` containing the source of truth for the segmentation by label. Further, it showed that slices 67-81 contained every class, moreover the prostate was present in a range from slices 45-81. A baseline smoke test on an A100 GPU for the 3D Improved U-Net showed that the data loaded correctly, split into train / validate / test, was able to run forward passes, train forward steps, evaluate and save checkpoints of the model. Further this smoke test allowed for measured resource estimation, with the dataset setup time taking 74 seconds, and each epoch taking approximately 35 seconds, the peak VRAM was also measured to be 21.46 GB. Estimating for approximately 50 epochs of training it would take approximately 30 minutes to train.
 
 ### 2.4 Risks, Budget and Fallback
 
@@ -111,19 +112,32 @@ The Next planned experiment is a full training run against the data with a large
 
 ### 3.1 Dependencies
 
-Ensure that the following depencencies are installed in the environment that this project is being run.
+Ensure that the following dependencies are installed in the environment that this project is being run. Further for training it requires about 22GB of VRAM (A100 class GPU) or if that is unavailable, reduce the batch size to 1 so that it trains slower but doesn't load in as much at once (this has not been tested). Prediction requires about 8GB of VRAM or it can be run on the CPU which would be much slower.
 
 - Python 3.12.3
-- torch 2.14.1
-- torchvision 0.29.1
-- numpy 2.5.4
-- nibabel 5.4.2
-- matplotlib 3.11.2
-- tqdm 4.70.1
+- torch 2.14.1 (`pip install torch==2.14.1`)
+- numpy 2.5.4 (`pip install numpy==2.5.4`)
+- nibabel 5.4.2 (`pip install nibabel==5.4.2`)
+- matplotlib 3.11.2 (`pip install matplotlib==3.11.2`)
+- tqdm 4.70.1 (`pip install tqdm==4.70.1`)
 
 ### 3.2 Setup and Reproducibility
 
-Set the dataset root path in `train.py` to the path containing the `semantic_MRs` and `semantic_labels_only` folders. Further it is optional to adjust the hyperparameters in `train.py` or the random seed in `dataset.py` to adjust the train / validate / test split. Further although the hyperparameters are the same and the data split is the same it does not necessarily mean that the results will be repeated exactly due to random features such as the dropout or many other factors.
+Set the dataset root path in `train.py` and `predict.py` to the path containing the `semantic_MRs` and `semantic_labels_only` folders. Further it is optional to adjust the hyperparameters in `train.py`. It is important not to adjust the random seed in `dataset.py`, as this would adjust the train / validate / test split and make it so that the results cannot be compared as directly to the results in this report. Further although the hyperparameters are the same and the data split is the same it does not necessarily mean that the results will be repeated exactly due to the fact that mixed precision is non-deterministic and the random seed used for data augmentation differs each run.
+
+### 3.3 Usage
+
+An example usage would be:
+```
+cd recognition/HipMRI
+python train.py # 3D Model: outputs unet3d_hipmri.pt and unet3d_plot_data.json
+python UNet_2D.py # 2D Model: outputs unet_2d_hipmri.pt and unet_2d_plot_data.json
+# move the .pt and .json files into 3D_Model/ and 2D_Unet_output/
+python predict.py # test metrics and images in folder/predictions/ run for is_3d true
+python predict.py # test metrics and images in folder/predictions/ run for is_3d false
+python plot_curves.py # loss and dice curves run for is_3d true
+python plot_curves.py # loss and dice curves run for is_3d false
+```
 
 ---
 
@@ -131,7 +145,7 @@ Set the dataset root path in `train.py` to the path containing the `semantic_MRs
 
 ### 4.1 3D Improved U-Net
 
-The type of inputs that are shown in the model can be seen bellow in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked ontop of eachother and passed into the model. Further the ground truth is also used in the training of the model purely for generating a loss function and evaluating how well the model predicted it.
+The type of inputs that are shown in the model can be seen below in Figure 2. As the model takes 3D data (256x256x128), it can be thought of as if 128 of the 2D input images are stacked on top of each other and passed into the model. Further the ground truth is also used in the training of the model purely for generating a loss function and evaluating how well the model predicted it.
 
 ![Model Input, Output and Truth img 0](3D_Model/predictions/unet3d_prediction_0.png)
 
@@ -202,7 +216,7 @@ The model ran for 55 minutes and had a peak VRAM of 20.54GB. The outputs of the 
 
 *Figure 7: Training and Validation Loss of each epoch*
 
-Figure 6 shows that the per class DSC climbed very fast initially (first 20 epochs) but then mostly leveled off for the rest of the training. Figure 7 shows that similar to figure 4 there was no memorisation of data and the validation loss stayed tightly linked to the training loss, trailing just a bit behind.
+Figure 6 shows that the per class DSC climbed very fast initially (first 20 epochs) but then mostly levelled off for the rest of the training. Figure 7 shows that similar to figure 4 there was no memorisation of data and the validation loss stayed tightly linked to the training loss, trailing just a bit behind.
 
 ---
 
@@ -216,7 +230,7 @@ Firstly, each MRI is paired up with its corresponding label using the `get_pairs
 
 ### 5.2 Normalisation and Label Encoding
 
-The data was augmented when it was loaded. Firstly there was a z-score normalisation (`normImage=True`) done on each volume ((x - mean) / std) so that every volume has a mean of 0 and a standard deviation of 1. This is useful as the intensities of an MRI have no standardised intensity values, so the same tissue can have a different value on a different scan so the normalisation fixes this by making those flucuations on a scale that is similar across the MRI's (Isensee et al. 2018).
+The data was augmented when it was loaded. Firstly there was a z-score normalisation (`normImage=True`) done on each volume ((x - mean) / std) so that every volume has a mean of 0 and a standard deviation of 1. This is useful as the intensities of an MRI have no standardised intensity values, so the same tissue can have a different value on a different scan so the normalisation fixes this by making those fluctuations on a scale that is similar across the MRIs (Isensee et al. 2018).
 
 The labels are one hot encoded inside the loss, they are kept as uint8 classes (0-5) and the `F.one_hot` inside `DiceLoss` turns them into 6 channels. This is useful as storing 6 channels per voxel for every one of the volumes would use six times the memory, it is also important so that a weight is not arbitrarily affected by class having a higher integer value.
 
@@ -224,19 +238,19 @@ The labels are one hot encoded inside the loss, they are kept as uint8 classes (
 
 Now, in the training set only, the data was augmented further. This was done as there are only 26 training patients and if the data was not augmented it was likely that the model would overfit and memorise the data, performing poorly on any data it had not seen while performing great in training. Note that the test and validation data is never augmented so that when the model runs on them it reflects real scans output.
 
-Each augmentation had a 50% chance of happening, so that the amount of limited data could be extended and be more 'unique' data. The following augmentation techniques were performed on the images and labels of the training (needs to apply to both or else if the image is rotated then the label should be aswell or it wont have the correct loss). Isenee et al, used random rotations, random scaling, random elastic deformations, gamma correction augmentation and mirroring.
+Each augmentation had a 50% chance of happening, so that the amount of limited data could be extended and be more 'unique' data. The following augmentation techniques were performed on the images and labels of the training (needs to apply to both or else if the image is rotated then the label should be as well or it won't have the correct loss). Isensee et al, used random rotations, random scaling, random elastic deformations, gamma correction augmentation and mirroring.
 
-There were left and right mirroring (flips across the height plane), when looking at the images in figure 5, it can be seen that the image is roughly symmetric left of the body to right of body (up and down looking at the scans), it would not be right to flip it front to back in the body (left righ in image) as that would place the bladder below the prostate which isn't possible and would poison the data.
+There were left and right mirroring (flips across the height plane), when looking at the images in figure 5, it can be seen that the image is roughly symmetric left of the body to right of body (up and down looking at the scans), it would not be right to flip it front to back in the body (left right in image) as that would place the bladder below the prostate which isn't possible and would poison the data.
 
 There were axial rotations of up to 15 degrees positively and negatively and also zooming in or out of up to 10%. This is useful as it simulates the small differences in a patient's positioning and body or organ size. A nearest neighbour resample is then used so every voxel stays belonging to only one class.
 
 The border is padded in a way that the rotated corners copy the edge values instead of filling with 0 as when the data has been normalised a value of 0 is likely to be something like tissue and may not be background.
 
-If the augmentation were to use gamma which is non-linear (x'=x^y) as there are normalised values, there a negative values and the data would need to be rescaled to [0,1] first. As such for ease, a random linear transformation is applied (x'=ax+b) to the image. This is applied only to the image to affect the brightness and contrast of the image so that teh model relies on the shape and relative contrast and brightness rather than the exact value to reduce overfitting.
+If the augmentation were to use gamma which is non-linear (x'=x^y) as there are normalised values, there are negative values and the data would need to be rescaled to [0,1] first. As such for ease, a random linear transformation is applied (x'=ax+b) to the image. This is applied only to the image to affect the brightness and contrast of the image so that the model relies on the shape and relative contrast and brightness rather than the exact value to reduce overfitting.
 
 ### 5.4 Train, Validation and Test Split
 
-To ensure that there was no data leaking there was a patient level split, not just a split based on week, volume, or slice. `split_pairs` groups by `Case_AAA` so that all a patients weekly scans are in one place. This is crucial as with 211 volumes and 38 patients each with about 5 scans a random split based on volume would have the model training on nearly identical data to what it is being validated and tested against. This would artificially increase the validation and test scores and overfit to the data given without much generalisability.
+To ensure that there was no data leaking there was a patient level split, not just a split based on week, volume, or slice. `split_pairs` groups by `Case_AAA` so that all of a patient's weekly scans are in one place. This is crucial as with 211 volumes and 38 patients each with about 5 scans a random split based on volume would have the model training on nearly identical data to what it is being validated and tested against. This would artificially increase the validation and test scores and overfit to the data given without much generalisability.
 
 Using this split based on patient, there was about 70% in the training set, 15% in the validation and 15% in the test. This corresponded to 26 training patients, 6 test patients, and 6 validation patients. The idea was to try and use as many patients as possible to train the model. Use the validation patients as a way to save the best model generated (best minimum class Dice Similarity Coefficient). Test is completely separated and only used in `predict.py`. Further a fixed seed is used for both the 2D baseline and 3D model so that they are tested on the same splits and so that the randomisation removes all bias that can be generated from hand picking patients and volumes for each set.
 
@@ -244,7 +258,7 @@ Using this split based on patient, there was about 70% in the training set, 15% 
 
 ## 6. Investigation of the Open Research Dilemma
 
-The open research question was to understand whether incorperating 3D volumetric continuity can eliminate boundary and slice-transition errors compared to a 2D baseline.
+The open research question was to understand whether incorporating 3D volumetric continuity can eliminate boundary and slice-transition errors compared to a 2D baseline.
 
 ### 6.1 Quantitative Benchmarking of 3D Improved U-Net against 2D U-Net
 
@@ -261,7 +275,7 @@ Both models are evaluated on the same 6 patients with 27 volumes. The table belo
 | **Mean** | 0.9279 | 0.9356 | +0.0077 | 0.8714 | 0.8842 | +0.0128 |
 | **Min class** | 0.8561 (Rectum) | 0.8602 (Prostate) | +0.0041 | | | |
 
-This table shows the just the prostate, specifically focusing on the last 5 slices on the apex and on the base as determined by what the label says should be the lowest and the highest slice.
+This table shows just the prostate, specifically focusing on the last 5 slices on the apex and on the base as determined by what the label says should be the lowest and the highest slice.
 
 | Region | 2D DSC | 3D DSC | Difference | 2D IoU | 3D IoU | Difference |
 |---|---|---|---|---|---|---|
@@ -286,7 +300,7 @@ It can be seen that the 3D model achieves better results on every section on bot
 – In-depth qualitative error autopsies analyzing 3–5 representative failure cases from the dataset
 (diagnosing root triggers and failure modes).
 
-Looking at the below images (unet3d_prediction_0.png & unet3d_prediction_0.png), the same slice of the image, apex slice 56 has been predicted to have no prostate where the ground truth has shown that it is there. This happened to both 2D and 3D and looking at the input image, unlike the middle slice where it shows a different colour the apex shows a faint shift that is relatively unnoticable and further it is small. Further, looking at the base slice 84, it can be seen that the 2D model overcontours by a lot, where the 3D model only overcontours a little. This failcase is likely due to the more complex shape, not being round but having a concave section.
+Looking at the below images (unet3d_prediction_0.png & unet3d_prediction_0.png), the same slice of the image, apex slice 56 has been predicted to have no prostate where the ground truth has shown that it is there. This happened to both 2D and 3D and looking at the input image, unlike the middle slice where it shows a different colour the apex shows a faint shift that is relatively unnoticeable and further it is small. Further, looking at the base slice 84, it can be seen that the 2D model overcontours by a lot, where the 3D model only overcontours a little. This failure case is likely due to the more complex shape, not being round but having a concave section.
 
 A clear section that the 2D model is better than the 3D is with (unet_2d_prediction_2, unet_3d_prediction_2) in the base input slice 67 where the 2D unet, although it predicts it a bit off where it is supposed to be, it puts some there, whereas the 3D model predicts that there is no prostate there.
 
@@ -296,7 +310,7 @@ All of these images show that the middle input slice seems to be well predicted 
 
 ### 6.4 Engineering Recommendation
 
-Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all aspects of quality and only has slightly worse resource consumption. The slight extra resource consumption is worth the extra performance quality of the model. Noting that it is slightly worse in IoU and DSC in the base slices, it well makes up for it in the apex slices. The recommendation that would be given is to make use of the new model to speed up segmentaiton of MRI's but to pay more attention to the areas where it is known to be lacking, such as the base slices.
+Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all aspects of quality and only has slightly worse resource consumption. The slight extra resource consumption is worth the extra performance quality of the model. Noting that it is slightly worse in IoU and DSC in the base slices, it well makes up for it in the apex slices. The recommendation that would be given is to make use of the new model to speed up segmentation of MRIs but to pay more attention to the areas where it is known to be lacking, such as the base slices.
 
 ---
 
@@ -312,7 +326,7 @@ Overall, the 3D Improved U-Net improves upon the 2D U-Net baseline in nearly all
 
 **How I audited the AI:**
 
-- I would not allow the AI to automatically input any code, instead writing it in myself understadning each line before moving onto the next. Whenever I didnt understand what it had done, I would get it to confirm the meaning behind the line.
+- I would not allow the AI to automatically input any code, instead writing it in myself understanding each line before moving onto the next. Whenever I didn't understand what it had done, I would get it to confirm the meaning behind the line.
 - I made sure to test that the functions worked together in a smoke test before doing a full long run.
 - When it suggested a reference, I would go to said reference and find the place where it said the thing being referenced.
 
